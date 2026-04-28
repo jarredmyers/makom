@@ -1,0 +1,1668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Makom — Tanach Geographic Tracker</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;700;900&family=Spectral:ital,wght@0,400;0,600;1,400&display=swap');
+
+/* ── TOKENS ── */
+:root {
+  --ink:       #1a1208;
+  --ink-mid:   #3a2a10;
+  --gold:      #c8962a;
+  --gold-lt:   #e8c76a;
+  --gold-dim:  rgba(200,150,42,0.25);
+  --parch:     #f7f0e0;
+  --parch-mid: #f0e6c8;
+  --parch-dk:  #e8ddb8;
+  --stone:     #8a7a5a;
+  --stone-lt:  #b8a882;
+  --night:     #0f0b04;
+  --night-mid: #1a1208;
+  --blue:      #2a4a6a;
+  --blue-lt:   #a8c8e8;
+  --radius:    3px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; font-family: 'Spectral', Georgia, serif; background: var(--night); color: var(--ink); }
+
+/* ── LAYOUT ── */
+.app  { display: grid; grid-template-rows: 54px 1fr; height: 100vh; }
+.main { display: grid; grid-template-columns: 310px 1fr; overflow: hidden; }
+
+/* ── HEADER ── */
+header {
+  background: var(--night); border-bottom: 1px solid var(--gold-dim);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; z-index: 1000; gap: 14px;
+}
+.h-title { display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
+.h-heb  { font-family: 'Frank Ruhl Libre', serif; font-size: 17px; font-weight: 700; color: var(--gold-lt); direction: rtl; letter-spacing: 0.05em; line-height: 1; }
+.h-sub  { font-size: 8px; letter-spacing: 0.28em; text-transform: uppercase; color: #4a3a1a; }
+
+/* Divider */
+.h-sep  { width: 1px; height: 24px; background: var(--gold-dim); flex-shrink: 0; }
+
+.h-controls { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: flex-end; }
+
+/* Shared pill button */
+.pill-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 11px; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase;
+  font-family: 'Spectral', serif; border-radius: 20px; cursor: pointer;
+  transition: all 0.15s; white-space: nowrap; border: 1px solid var(--gold-dim);
+  background: transparent; color: #5a4a2a;
+}
+.pill-btn:hover   { color: var(--gold); border-color: rgba(200,150,42,0.5); }
+.pill-btn.active  { background: var(--gold); color: var(--night); border-color: var(--gold); font-weight: 600; }
+.pill-btn.active:hover { background: var(--gold-lt); }
+.pill-btn.era-on  { background: var(--blue); color: var(--blue-lt); border-color: #3a6a9a; }
+.pill-btn.era-on:hover { background: #3a5a7a; }
+.pill-btn .dot    { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+/* Chapter selects */
+.ch-controls { display: flex; align-items: center; gap: 5px; }
+.ch-lbl { font-size: 8px; letter-spacing: 0.18em; text-transform: uppercase; color: #4a3a1a; }
+.ch-sel {
+  background: var(--night-mid); color: var(--gold-lt); border: 1px solid #2a1a08;
+  padding: 4px 7px; font-family: 'Spectral', serif; font-size: 10px;
+  border-radius: var(--radius); cursor: pointer; outline: none; max-width: 160px;
+}
+.ch-sel option { background: var(--night-mid); }
+.ch-sel:focus   { border-color: var(--gold); }
+
+.ev-badge {
+  font-size: 8px; padding: 3px 8px; border-radius: 20px;
+  background: rgba(200,150,42,0.1); color: #7a6a3a;
+  border: 1px solid var(--gold-dim); white-space: nowrap; letter-spacing: 0.08em;
+}
+
+/* ── SIDEBAR ── */
+#sidebar {
+  background: var(--parch); border-right: 1px solid var(--gold-dim);
+  display: flex; flex-direction: column; overflow: hidden; z-index: 500;
+}
+
+/* Sidebar sticky header — same style for both modes */
+.sb-header {
+  background: var(--night-mid); padding: 10px 15px; flex-shrink: 0;
+  border-bottom: 1px solid var(--gold-dim);
+}
+.sb-title { font-size: 9px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--stone); }
+.sb-count { font-size: 9px; color: #3a2a10; margin-top: 3px; }
+
+/* Book mode filter controls */
+.sb-book-controls {
+  background: var(--night-mid); padding: 11px 15px; flex-shrink: 0;
+  border-bottom: 1px solid var(--gold-dim);
+  display: none; flex-direction: column; gap: 9px;
+}
+.sb-book-controls.on { display: flex; }
+.bc-lbl { font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--stone); margin-bottom: 3px; }
+.bc-sel {
+  background: var(--night); color: var(--gold-lt); border: 1px solid #2a1a08;
+  padding: 5px 8px; font-family: 'Spectral', serif; font-size: 10px; font-style: italic;
+  border-radius: var(--radius); cursor: pointer; outline: none; width: 100%;
+}
+.bc-sel option { background: var(--night); font-style: normal; }
+.bc-sel:focus  { border-color: var(--gold); }
+.range-wrap    { display: flex; align-items: center; gap: 7px; }
+.bc-range {
+  flex: 1; -webkit-appearance: none; height: 3px; border-radius: 2px; outline: none; cursor: pointer;
+  background: linear-gradient(to right, var(--gold) var(--pct,100%), #2a1a08 var(--pct,100%));
+}
+.bc-range::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: var(--gold); border: 2px solid #f5eed8; cursor: pointer; }
+.range-lbl  { font-size: 9px; color: var(--stone); white-space: nowrap; }
+.bc-count   { font-size: 9px; color: #3a2a10; }
+
+/* Scrollable event list */
+#event-list { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--parch-dk) var(--parch); }
+#event-list::-webkit-scrollbar       { width: 3px; }
+#event-list::-webkit-scrollbar-track { background: var(--parch); }
+#event-list::-webkit-scrollbar-thumb { background: var(--parch-dk); border-radius: 2px; }
+
+/* ── EVENT ITEMS ── */
+.ev-item {
+  border-bottom: 1px solid var(--parch-dk); cursor: pointer;
+  transition: background 0.1s; position: relative;
+}
+.ev-item::after {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 0; background: var(--gold); transition: width 0.1s;
+}
+.ev-item:hover        { background: #f0e8d0; }
+.ev-item:hover::after { width: 2px; }
+.ev-item.active       { background: var(--parch-mid); border-left: 3px solid var(--gold); }
+.ev-item.active::after{ display: none; }
+.ev-item.hidden       { display: none; }
+
+.ev-summary { padding: 10px 14px; }
+.ev-v   { font-size: 8px; color: var(--stone-lt); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 3px; }
+.ev-p   { font-family: 'Frank Ruhl Libre', serif; font-size: 14px; font-weight: 700; color: var(--ink); line-height: 1.2; }
+.ev-ph  { font-size: 10px; color: var(--stone); direction: rtl; font-family: 'Frank Ruhl Libre', serif; font-weight: 400; }
+.ev-who { font-size: 10px; color: #8b2a2a; font-style: italic; margin-top: 3px; }
+
+/* Expanded detail panel */
+.ev-detail {
+  display: none; padding: 0 14px 14px; background: var(--parch-mid);
+  border-top: 1px solid var(--parch-dk);
+}
+.ev-item.active .ev-detail { display: block; }
+.ev-desc-text   { font-size: 11px; color: var(--ink-mid); line-height: 1.6; font-style: italic; margin-bottom: 8px; padding-top: 8px; }
+.ev-source-text { font-size: 10px; color: #7a6a4a; line-height: 1.5; padding-top: 7px; border-top: 1px solid var(--parch-dk); }
+
+/* ── PLACE TAB ── */
+.pat-toggle {
+  display: flex; margin-bottom: 10px; margin-top: 8px;
+  border: 1px solid var(--parch-dk); border-radius: var(--radius); overflow: hidden;
+}
+.pat-tab {
+  flex: 1; padding: 5px 0; font-size: 9px; text-align: center;
+  letter-spacing: 0.1em; text-transform: uppercase; font-family: 'Spectral', serif;
+  border: none; cursor: pointer; transition: all 0.12s;
+  background: transparent; color: var(--stone);
+}
+.pat-tab.active { background: var(--night-mid); color: var(--gold-lt); font-weight: 600; }
+.pat-tab:not(.active):hover { background: var(--parch-dk); }
+.pat-panel { display: none; }
+.pat-panel.active { display: block; }
+
+.pat-event {
+  padding: 8px 0; border-bottom: 1px solid var(--parch-dk);
+  cursor: pointer; transition: background 0.1s;
+}
+.pat-event:last-child { border-bottom: none; }
+.pat-event:hover      { background: rgba(200,150,42,0.07); margin: 0 -14px; padding: 8px 14px; }
+.pat-event.current    { opacity: 0.45; cursor: default; }
+.pat-ch    { font-size: 9px; color: var(--stone); margin-bottom: 2px; }
+.pat-ch-dot{ display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+.pat-place { font-size: 12px; font-weight: 600; color: var(--ink); font-family: 'Frank Ruhl Libre', serif; }
+.pat-d     { font-size: 10px; color: var(--stone); font-style: italic; margin-top: 2px; line-height: 1.4; }
+.pat-none  { font-size: 10px; color: #a09070; font-style: italic; padding: 8px 0; }
+
+/* ── BOOK MODE ACCORDION ── */
+.ch-group { border-bottom: 1px solid var(--parch-dk); }
+.ch-group-hdr {
+  padding: 9px 14px; cursor: pointer; background: #f0e8d0;
+  display: flex; justify-content: space-between; align-items: center;
+  user-select: none; transition: background 0.1s;
+}
+.ch-group-hdr:hover            { background: var(--parch-dk); }
+.ch-group-hdr.open             { background: #eadb90; border-left: 3px solid var(--gold); }
+.ch-group-hdr-title            { font-family: 'Frank Ruhl Libre', serif; font-size: 12px; font-weight: 700; color: var(--ink); }
+.ch-group-hdr-meta             { font-size: 9px; color: var(--stone); }
+.ch-group-hdr-arrow            { font-size: 9px; color: var(--stone); transition: transform 0.18s; }
+.ch-group-hdr.open .ch-group-hdr-arrow { transform: rotate(90deg); }
+.ch-group-body { display: none; }
+.ch-group-hdr.open + .ch-group-body { display: block; }
+
+/* ── MAP ── */
+#map-area { position: relative; overflow: hidden; }
+#map      { width: 100%; height: 100%; }
+
+/* ── LEGEND ── */
+.legend {
+  position: absolute; bottom: 16px; right: 14px; z-index: 500;
+  background: rgba(10,8,2,0.90); border: 1px solid var(--gold-dim);
+  border-radius: var(--radius); padding: 9px 13px; color: #c8b898;
+  font-size: 10px; font-family: 'Spectral', serif; line-height: 2;
+  pointer-events: none; backdrop-filter: blur(4px);
+}
+.legend-title { font-size: 8px; letter-spacing: 0.22em; text-transform: uppercase; color: #5a4a2a; margin-bottom: 3px; }
+.ldot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; border: 1px solid rgba(255,255,255,0.15); }
+
+/* ── LEAFLET POPUP ── */
+.leaflet-popup-content-wrapper { background: rgba(10,8,2,0.96) !important; border: 1px solid var(--gold) !important; border-radius: var(--radius) !important; box-shadow: 0 6px 24px rgba(0,0,0,0.6) !important; }
+.leaflet-popup-content { color: #f5eed8 !important; font-family: 'Spectral', serif !important; margin: 11px 15px !important; }
+.leaflet-popup-tip     { background: rgba(10,8,2,0.96) !important; }
+.leaflet-popup-close-button { color: var(--gold) !important; font-size: 16px !important; top: 6px !important; right: 8px !important; }
+.pop-era   { font-size: 8px; letter-spacing: 0.15em; text-transform: uppercase; color: #6a9aba; margin-bottom: 3px; }
+.pop-place { font-family: 'Frank Ruhl Libre', serif; font-size: 14px; font-weight: 700; color: var(--gold-lt); margin-bottom: 3px; }
+.pop-verse { font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; color: #5a4a2a; margin-bottom: 6px; }
+.pop-desc  { font-size: 11px; font-style: italic; color: #c8b898; line-height: 1.55; }
+
+/* ── DRAWER TOGGLE (mobile) ── */
+#drawer-toggle { display: none; }
+
+/* ── MOBILE ── */
+@media (max-width: 680px) {
+  .app  { grid-template-rows: auto 1fr; }
+  .main { grid-template-columns: 1fr; position: relative; }
+
+  header { height: auto; padding: 8px 14px; flex-wrap: wrap; gap: 6px; }
+  .h-title { flex: 1; min-width: 0; }
+  .h-heb  { font-size: 15px; }
+  .h-sub, .h-sep, .ev-badge { display: none; }
+  .h-controls { flex-wrap: wrap; gap: 5px; width: 100%; justify-content: flex-start; }
+  .ch-lbl { display: none; }
+  .ch-sel { font-size: 11px; max-width: 130px; }
+  .era-toggle { display: none; } /* era toggle goes in sidebar on mobile */
+
+  #map-area { position: absolute; inset: 0; }
+  #map      { width: 100%; height: 100%; }
+  .legend   { bottom: 58px; right: 8px; font-size: 9px; padding: 5px 9px; line-height: 1.75; }
+
+  #sidebar {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 50px; max-height: 74vh;
+    border-right: none; border-top: 2px solid var(--gold);
+    border-radius: 14px 14px 0 0; z-index: 900;
+    transition: height 0.28s cubic-bezier(0.4,0,0.2,1);
+    overflow: hidden; background: var(--parch);
+  }
+  #sidebar.open { height: 74vh; }
+  #sidebar::before {
+    content: ''; display: block; width: 32px; height: 4px;
+    background: var(--parch-dk); border-radius: 2px;
+    margin: 8px auto 0; flex-shrink: 0;
+  }
+
+  #drawer-toggle {
+    display: flex; position: absolute;
+    bottom: 50px; left: 50%; transform: translateX(-50%);
+    background: var(--night-mid); border: 1px solid var(--gold);
+    border-radius: 20px; padding: 7px 18px;
+    color: var(--gold-lt); font-family: 'Spectral', serif;
+    font-size: 11px; letter-spacing: 0.1em; cursor: pointer;
+    z-index: 901; align-items: center; gap: 6px;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.5);
+    transition: bottom 0.28s cubic-bezier(0.4,0,0.2,1);
+    white-space: nowrap;
+  }
+  #drawer-toggle.open { bottom: calc(74vh + 6px); }
+  #drawer-toggle-icon { font-size: 11px; transition: transform 0.25s; }
+  #drawer-toggle.open #drawer-toggle-icon { transform: rotate(180deg); }
+  #event-list { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .sb-header, .sb-book-controls { border-radius: 0; }
+}
+
+/* ── MODERN ERA EXTRAS ── */
+.pop-era   { font-size: 8px; letter-spacing: 0.15em; text-transform: uppercase; color: #6a9aba; margin-bottom: 3px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="h-title">
+    <div class="h-heb" id="h-heb">שמואל א · פרק יז</div>
+    <div class="h-sub" id="h-sub">I Samuel · Chapter 17</div>
+  </div>
+  <div class="h-sep"></div>
+  <div class="h-controls">
+    <button class="pill-btn active" id="btn-chapter" onclick="setMode('chapter')">Chapter</button>
+    <button class="pill-btn" id="btn-book" onclick="setMode('book')">Full Book</button>
+    <div class="h-sep"></div>
+    <div class="ch-controls" id="ch-controls">
+      <span class="ch-lbl">Book</span>
+      <select class="ch-sel" id="book-sel" onchange="onBookChange()">
+        <option value="shmuel1">Shmuel I</option>
+        <option value="shmuel2">Shmuel II</option>
+      </select>
+      <span class="ch-lbl">Ch</span>
+      <select class="ch-sel" id="ch-sel" onchange="onChapterChange()"></select>
+    </div>
+    <span class="ev-badge" id="ev-badge">— events</span>
+    <div class="h-sep"></div>
+    <button class="pill-btn" id="era-modern-btn" onclick="toggleModernEra()">
+      <span class="dot"></span>Modern 1882–1967
+    </button>
+  </div>
+</header>
+
+<div class="main">
+  <div id="sidebar">
+    <!-- Chapter mode header -->
+    <div class="sb-header" id="sb-ch-hdr">
+      <div class="sb-title" id="sb-ch-title">Chapter Events</div>
+      <div class="sb-count" id="sb-ch-count"></div>
+    </div>
+    <!-- Book mode controls -->
+    <div class="sb-book-controls" id="sb-book-ctrl">
+      <div>
+        <div class="bc-lbl">Follow a Person</div>
+        <select class="bc-sel" id="bc-person" onchange="applyBookFilters()">
+          <option value="">All persons</option>
+        </select>
+      </div>
+      <div>
+        <div class="bc-lbl">Theme</div>
+        <select class="bc-sel" id="bc-theme" onchange="applyBookFilters()">
+          <option value="">All themes</option>
+          <option value="War">War &amp; Battle</option>
+          <option value="Prayer">Prayer &amp; Worship</option>
+          <option value="Prophecy">Prophecy</option>
+          <option value="Kingship">Kingship</option>
+          <option value="Exile">Exile &amp; Flight</option>
+          <option value="Miracle">Miracle</option>
+          <option value="Death">Death</option>
+          <option value="Covenant">Covenant &amp; Loyalty</option>
+          <option value="Providence">Providence</option>
+          <option value="Victory">Victory</option>
+        </select>
+      </div>
+      <div>
+        <div class="bc-lbl">Chapters 1 – <span id="range-disp">31</span></div>
+        <div class="range-wrap">
+          <span class="range-lbl">1</span>
+          <input type="range" class="bc-range" id="bc-range" min="1" max="31" value="31" oninput="onRangeInput(this)"/>
+          <span class="range-lbl" id="range-end">31</span>
+        </div>
+      </div>
+      <div class="bc-count" id="bc-count"></div>
+    </div>
+    <div id="event-list"></div>
+  </div>
+
+  <div id="map-area">
+    <div id="map"></div>
+    <div class="legend" id="legend"></div>
+    <!-- Mobile drawer toggle -->
+    <button id="drawer-toggle" onclick="toggleDrawer()">
+      <span id="drawer-toggle-icon">▲</span>
+      <span id="drawer-label">Events</span>
+    </button>
+  </div>
+</div>
+
+</div><!-- .app -->
+<script>
+// ── CHAPTER DATA ──────────────────────────────────────────────
+var CHAPTERS = {};
+
+// ── SHMUEL I ──────────────────────────────────────────────────
+
+CHAPTERS['shmuel1_1'] = [
+  { verse:"1:1",    place:"Ramatayim-Tzofim",         heb:"רמתיים צופים",   lat:31.928, lng:35.299, color:"#2a4a8a", persons:["Elkana","Chana","Penina"],  themes:["Origin","Family"],       source:"Radak: Ramatayim-Tzofim is Rama in Efraim, Shmuel's birthplace — 'heights of the watchmen.'",               desc:"Elkana of Ramatayim-Tzofim, from the hill country of Efraim, has two wives — Chana and Penina." },
+  { verse:"1:3",    place:"Shilo",                    heb:"שילה",            lat:32.053, lng:35.286, color:"#2a4a8a", persons:["Elkana","Chana","Penina","Eli"], themes:["Worship","Pilgrimage"], source:"Metzudat David: Shilo was the resting place of the Mishkan for 369 years before it was destroyed.",          desc:"Elkana travels yearly to Shilo to worship and sacrifice to Hashem Tzvaot. Eli the Kohen presides there." },
+  { verse:"1:9-18", place:"Shilo — Mishkan Entrance", heb:"שילה · פתח המשכן", lat:32.054, lng:35.287, color:"#c8962a", persons:["Chana","Eli"],              themes:["Prayer","Miracle","Faith"],source:"Rashi: Chana's silent prayer established the template for Jewish prayer — lips moving, voice unheard.",        desc:"Chana prays in anguish at the entrance of the Mishkan, vowing to dedicate her son. Eli mistakes her for drunk." },
+  { verse:"1:19",   place:"Rama",                     heb:"רמה",             lat:31.928, lng:35.299, color:"#2a4a8a", persons:["Elkana","Chana"],            themes:["Providence","Family"],   source:"Abarbanel: The text records their return home before conception — hinting that prayer was already answered.",    desc:"Elkana and Chana return home to Rama. Hashem remembers Chana — she conceives and bears a son, Shmuel." },
+  { verse:"1:24",   place:"Shilo — Dedication",       heb:"שילה",            lat:32.053, lng:35.286, color:"#c8962a", persons:["Chana","Shmuel","Eli"],      themes:["Dedication","Worship"],  source:"Radak: Chana's fulfillment of her vow is the model of the naderet — one who makes and keeps a vow to God.",    desc:"Chana brings the young Shmuel to Shilo with offerings and dedicates him to Hashem in Eli's charge." }
+];
+
+CHAPTERS['shmuel1_2'] = [
+  { verse:"2:1-10", place:"Shilo — Chana's Song",     heb:"שילה",            lat:32.053, lng:35.286, color:"#c8962a", persons:["Chana"],                    themes:["Prayer","Prophecy","Faith"],source:"Malbim: Chana's song is prophetic — it describes the fall of kings and rise of the anointed, foreshadowing Dovid.", desc:"Chana prays her great song of thanksgiving at Shilo — a prophetic poem about the reversal of fortunes." },
+  { verse:"2:11",   place:"Rama",                     heb:"רמה",             lat:31.928, lng:35.299, color:"#2a4a8a", persons:["Elkana","Chana"],            themes:["Family"],                source:"",                                                                                                               desc:"Elkana and Chana return to Rama. The child Shmuel ministers before Hashem under Eli the Kohen." },
+  { verse:"2:12-17",place:"Shilo — Altar",            heb:"שילה · המזבח",   lat:32.054, lng:35.287, color:"#8b1a1a", persons:["Chofni","Pinchas","Eli"],    themes:["Corruption","Sin"],      source:"Rashi: Chofni and Pinchas took meat by force — a desecration of the sacred service that hastened destruction.", desc:"The sons of Eli — Chofni and Pinchas — corrupt the sacrificial service, taking meat by force from the people." },
+  { verse:"2:22",   place:"Shilo — Mishkan",          heb:"שילה",            lat:32.053, lng:35.286, color:"#8b1a1a", persons:["Eli","Chofni","Pinchas"],    themes:["Corruption","Warning"],  source:"Abarbanel: Eli's rebuke was insufficient — he reproved with words but did not remove them from office.",          desc:"Eli rebukes his sons for their sins with the women who gathered at the Mishkan entrance. They do not listen." },
+  { verse:"2:27-36",place:"Shilo — Prophecy",         heb:"שילה",            lat:32.053, lng:35.286, color:"#8b1a1a", persons:["Eli","Ish HaElohim"],        themes:["Prophecy","Judgment"],   source:"Radak: The man of God prophesied the end of Eli's priestly line — fulfilled at Nov and Avaiyatar's dismissal.",   desc:"A man of God comes to Eli at Shilo with a devastating prophecy: his priestly line will be cut off." }
+];
+
+CHAPTERS['shmuel1_3'] = [
+  { verse:"3:1-9",  place:"Shilo — Mishkan",          heb:"שילה",            lat:32.053, lng:35.286, color:"#c8962a", persons:["Shmuel","Eli"],              themes:["Prophecy","Calling"],    source:"Rashi: 'The word of Hashem was rare in those days' — a generation's spiritual state reflected in prophecy's absence.", desc:"Young Shmuel sleeps in the Mishkan near the Ark. He hears his name called — three times mistakes it for Eli." },
+  { verse:"3:10-14",place:"Shilo — Shmuel's Vision",  heb:"שילה",            lat:32.053, lng:35.286, color:"#c8962a", persons:["Shmuel","Hashem","Eli"],     themes:["Prophecy","Judgment"],   source:"Malbim: Shmuel's first prophecy is also his most terrifying — he must deliver judgment against his own teacher.", desc:"Hashem calls Shmuel and reveals the judgment against Eli's house. Shmuel is afraid to tell Eli." },
+  { verse:"3:15-18",place:"Shilo — Morning",          heb:"שילה",            lat:32.053, lng:35.286, color:"#2a4a8a", persons:["Shmuel","Eli"],              themes:["Courage","Prophecy"],    source:"Abarbanel: Eli's response — 'It is Hashem, let Him do what seems good' — is the model of acceptance of divine judgment.", desc:"Shmuel tells Eli the full prophecy at dawn. Eli accepts the judgment with faith." },
+  { verse:"3:19-21",place:"Dan to Beer Sheva",        heb:"מדן עד באר שבע", lat:31.240, lng:34.800, color:"#4a7a2a", persons:["Shmuel"],                    themes:["Prophecy","Recognition"], source:"Radak: 'From Dan to Beer Sheva' is the biblical idiom for the full extent of the Land — north to south.",          desc:"Shmuel's prophecy is confirmed throughout the land — from Dan to Beer Sheva, all Yisrael recognizes him as a true prophet." }
+];
+
+CHAPTERS['shmuel1_4'] = [
+  { verse:"4:1",    place:"Even HaEzer",              heb:"אבן העזר",        lat:31.888, lng:34.975, color:"#4a7a2a", persons:["Yisrael","Pelishtim"],       themes:["War","Assembly"],        source:"Metzudat David: Even HaEzer — 'Stone of Help' — named retroactively by Shmuel after the battle of chapter 7.",  desc:"Yisrael camps at Even HaEzer. The Philistines gather at Afek. Battle is joined — Yisrael is defeated, 4,000 men fall." },
+  { verse:"4:1-2",  place:"Afek",                     heb:"אפק",             lat:32.103, lng:34.917, color:"#8b1a1a", persons:["Pelishtim"],                 themes:["War","Encampment"],      source:"Rashi: Afek is on the coastal plain — Philistine territory, giving them tactical advantage.",                       desc:"Philistines encamp at Afek on the coastal plain, facing Yisrael across the battlefield." },
+  { verse:"4:3-11", place:"Shilo — Ark Taken",        heb:"שילה · הארון",   lat:32.053, lng:35.286, color:"#8b1a1a", persons:["Chofni","Pinchas","Yisrael"], themes:["War","Catastrophe","Sin"],source:"Yalkut Shimoni: The Ark was brought as a talisman — but Hashem cannot be summoned. The sin caused the defeat.",   desc:"Yisrael brings the Ark from Shilo to battle. Chofni and Pinchas accompany it. Yisrael is crushed — 30,000 fall. The Ark is captured." },
+  { verse:"4:12-18",place:"Shilo — News Arrives",     heb:"שילה",            lat:32.053, lng:35.286, color:"#8b1a1a", persons:["Eli","Messenger"],           themes:["Catastrophe","Death"],   source:"Radak: Eli was 98 years old and blind. When he heard the Ark was taken he fell backward and died — the Ark was his life.", desc:"A Binyaminite runner reaches Shilo with news of the defeat. When Eli hears the Ark is captured, he falls and dies." },
+  { verse:"4:19-22",place:"Shilo — Ikavod Born",      heb:"שילה · עקבוד",   lat:32.053, lng:35.286, color:"#8b1a1a", persons:["Pinchas's Wife"],            themes:["Catastrophe","Death"],   source:"Malbim: 'Ikavod' — where is the glory? The name encodes the theology of the day: the Shechina has departed.",       desc:"Pinchas's wife dies in childbirth, naming the child Ikavod — 'the glory has departed from Yisrael.'" },
+  { verse:"4:1",    place:"Ashdod — Ark in Philistia",heb:"אשדוד",           lat:31.793, lng:34.650, color:"#8b1a1a", persons:["Pelishtim"],                 themes:["Ark","Miracle"],         source:"Rashi: The Ark brought plague wherever it went among the Philistines — demonstrating that its capture was permitted, not powerless.", desc:"Philistines bring the captured Ark to Ashdod and place it in the temple of Dagon. Dagon falls before it." }
+];
+
+CHAPTERS['shmuel1_5'] = [
+  { verse:"5:1-5",  place:"Ashdod — Temple of Dagon", heb:"אשדוד · דגון",   lat:31.793, lng:34.650, color:"#8b1a1a", persons:["Pelishtim"],                 themes:["Miracle","Ark","Judgment"],source:"Radak: Two days, two falls — the second time Dagon's hands and head were cut off, as if executed for treason against Hashem.", desc:"The Ark is placed before Dagon in Ashdod. Dagon falls on his face before the Ark — twice. His hands and head are cut off." },
+  { verse:"5:6-8",  place:"Ashdod — Plague",          heb:"אשדוד",           lat:31.793, lng:34.650, color:"#8b1a1a", persons:["Pelishtim"],                 themes:["Plague","Judgment","Ark"],source:"Malbim: The tumors (ofalim) struck the people and the land was infested — Hashem fighting from within Philistine territory.", desc:"Hashem strikes Ashdod and its region with tumors (ofalim). The Philistines of Ashdod send the Ark to Gat." },
+  { verse:"5:8-9",  place:"Gat",                      heb:"גת",              lat:31.763, lng:34.853, color:"#8b1a1a", persons:["Pelishtim"],                 themes:["Plague","Judgment","Ark"],source:"Rashi: Each city that received the Ark was struck — demonstrating that Hashem was not defeated, only allowing capture temporarily.", desc:"The Ark moves to Gat. Hashem strikes Gat with great panic and tumors — young and old alike." },
+  { verse:"5:10-12",place:"Ekron",                    heb:"עקרון",           lat:31.765, lng:34.836, color:"#8b1a1a", persons:["Pelishtim"],                 themes:["Plague","Judgment","Ark"],source:"Abarbanel: The Ekronites cried out in terror — they knew the Ark was a death sentence for any city that held it.",              desc:"The Ark is sent to Ekron. The city erupts in outcry — a very deadly plague strikes and the people cry to send it back." }
+];
+
+CHAPTERS['shmuel1_17'] = [
+  { verse:"17:1-2",   place:"Emek HaElah",                heb:"עמק האלה",    lat:31.700, lng:34.955, color:"#4a7a2a", persons:["Shaul","Yisrael"],       themes:["Assembly","War"],          source:"Radak: האלה — terebinth tree, giving the valley its name. A natural corridor into Yehuda.",               desc:"Shaul and Yisrael mass in the Valley of Elah, facing the Philistines across the valley floor." },
+  { verse:"17:1",     place:"Sokho",                      heb:"שוכה",         lat:31.716, lng:34.938, color:"#8b1a1a", persons:["Pelishtim"],              themes:["War","Encampment"],        source:"Metzudat David: Sokho is in the lowland of Yehuda — a natural staging ground for northern incursion.",    desc:"Philistines encamp at Sokho of Yehuda — their forward position in the Shephelah foothills." },
+  { verse:"17:2-3",   place:"Azeka",                      heb:"עזקה",         lat:31.703, lng:34.924, color:"#8b1a1a", persons:["Pelishtim"],              themes:["War","Encampment"],        source:"Rashi: The armies stood on opposite hills with the valley between — classic tell-confrontation formation.",  desc:"Philistine camp between Sokho and Azeka. Two armies face each other across the valley." },
+  { verse:"17:4-11",  place:"Valley Floor — Goliath",     heb:"עמק האלה",    lat:31.697, lng:34.948, color:"#8b1a1a", persons:["Goliath","Pelishtim"],    themes:["Challenge","Fear"],        source:"Yalkut Shimoni: 40 days corresponds to Moshe's 40 days on Sinai — Goliath timed this to desecrate their merit.", desc:"Goliath steps into the valley morning and evening for 40 days, issuing his challenge. Six cubits and a span tall." },
+  { verse:"17:12-15", place:"Beit Lechem",                heb:"בית לחם",     lat:31.705, lng:35.208, color:"#2a4a8a", persons:["Dovid","Yishai"],         themes:["Origin","Providence"],    source:"Radak: Yishai identified with the Sanhedrin of his generation. Dovid's shepherding prepares him for leadership.", desc:"Dovid, youngest son of Yishai the Ephrathite, tends his father's flock in Beit Lechem." },
+  { verse:"17:17-20", place:"Route: Beit Lechem to Elah", heb:"",            lat:31.701, lng:35.080, color:"#2a4a8a", persons:["Dovid"],                  themes:["Journey","Providence"],   source:"Metzudat David: The cheeses (charifot) show honor to commanders. The journey is approximately 25km.",       desc:"Yishai sends Dovid with provisions. He departs at dawn — approximately 25km journey to the camp." },
+  { verse:"17:20-30", place:"Israelite Camp",             heb:"מחנה ישראל",  lat:31.704, lng:34.962, color:"#2a4a8a", persons:["Dovid","Eliav","Shaul"],  themes:["Confrontation","Courage"],source:"Abarbanel: Eliav's anger reveals jealousy — he senses Dovid's greatness. Dovid turns 'from him unto another.'", desc:"Dovid arrives as the armies shout. He hears Goliath's taunt and asks about the reward. Eliav rebukes him." },
+  { verse:"17:31-40", place:"Shaul's Tent",               heb:"אוהל שאול",   lat:31.706, lng:34.965, color:"#c8962a", persons:["Dovid","Shaul"],          themes:["Faith","Preparation"],    source:"Chida: Five stones correspond to five letters of God's name. Rashi: Goliath had four brothers who might also fight.", desc:"Dovid before Shaul. He declines the armor. Takes his staff, sling, and five smooth stones." },
+  { verse:"17:40",    place:"Nachal HaElah — The Wadi",   heb:"נחל האלה",    lat:31.699, lng:34.952, color:"#2a4a8a", persons:["Dovid"],                  themes:["Preparation","Providence"],source:"Radak: The Nachal Elah still runs seasonally. Smooth stones are optimal for a sling — Dovid's selection is methodical.", desc:"Dovid selects five smooth stones from the streambed — a deliberate, methodical act before the duel." },
+  { verse:"17:41-51", place:"The Duel",                   heb:"המערכה",       lat:31.695, lng:34.953, color:"#c8962a", persons:["Dovid","Goliath"],        themes:["Victory","Faith","Miracle"],source:"Malbim: 'Va'yaratz' — Dovid ran. Running toward danger is the signature of complete bitachon.",           desc:"Dovid runs toward Goliath. The stone sinks into his forehead. Goliath falls. Dovid beheads him with his own sword." },
+  { verse:"17:52-54", place:"Pursuit to Gat and Ekron",   heb:"גת · עקרון", lat:31.740, lng:34.780, color:"#4a7a2a", persons:["Yisrael"],                themes:["Victory","War"],           source:"Radak: Sha'arayim — 'Two Gates' — a Shephelah city. The pursuit traces Philistine withdrawal to their coastal heartland.", desc:"Yisrael rises and pursues the Philistines westward to the gates of Ekron. Slain lie along the road to Sha'arayim." }
+];
+
+CHAPTERS['shmuel1_6'] = [
+  { verse:"6:1-2",   place:"Ekron",                    heb:"עקרון",           lat:31.765, lng:34.836, color:"#8b1a1a", persons:["Pelishtim"],                 themes:["Ark","Deliberation"],     source:"Radak: Seven months the Ark was in Philistia — each city struck in turn, until they could bear it no longer.",   desc:"After seven months, the Philistines summon priests and diviners to determine how to send the Ark back." },
+  { verse:"6:7-12",  place:"Road to Beit Shemesh",     heb:"בית שמש",         lat:31.730, lng:34.988, color:"#c8962a", persons:["Pelishtim","Ark"],           themes:["Miracle","Ark","Providence"],source:"Rashi: The cows went straight to Beit Shemesh against their nature, lowing as they walked — a supernatural sign.", desc:"Two nursing cows carry the Ark straight toward Beit Shemesh without deviation — a miraculous sign confirming divine will." },
+  { verse:"6:13-18", place:"Beit Shemesh",             heb:"בית שמש",         lat:31.730, lng:34.988, color:"#c8962a", persons:["People of Beit Shemesh","Ark"], themes:["Ark","Return","Miracle"], source:"Malbim: The men of Beit Shemesh rejoiced at seeing the Ark — but then looked inside and were struck down.",       desc:"The Ark arrives at Beit Shemesh. The people rejoice and offer sacrifices. But those who look inside are struck dead." },
+  { verse:"6:21-7:1",place:"Kiryat Yearim",            heb:"קרית יערים",      lat:31.800, lng:35.097, color:"#4a7a2a", persons:["People of Kiryat Yearim","Ark"], themes:["Ark","Custody"],         source:"Radak: Kiryat Yearim — 'City of Forests' — held the Ark for 20 years until Dovid brought it to Yerushalayim.",  desc:"The people of Beit Shemesh send to Kiryat Yearim. The men there take the Ark to the house of Avinadav on the hill." }
+];
+
+CHAPTERS['shmuel1_7'] = [
+  { verse:"7:2-4",   place:"Kiryat Yearim",            heb:"קרית יערים",      lat:31.800, lng:35.097, color:"#4a7a2a", persons:["Shmuel","Yisrael"],          themes:["Repentance","Return"],    source:"Malbim: Twenty years of longing for God preceded the national repentance — a slow return more lasting than sudden.", desc:"For twenty years the Ark rests at Kiryat Yearim. Shmuel calls Yisrael to return to Hashem — remove the Baalim and Ashtarot." },
+  { verse:"7:5-6",   place:"Mitzpa",                   heb:"מצפה",             lat:31.858, lng:35.186, color:"#4a7a2a", persons:["Shmuel","Yisrael"],          themes:["Assembly","Repentance","Prayer"], source:"Rashi: Mitzpa was a traditional gathering place — elevated, visible, associated with communal vow and assembly.", desc:"Shmuel gathers all Yisrael at Mitzpa. They fast, draw water, and pour it before Hashem. Shmuel judges them there." },
+  { verse:"7:7-11",  place:"Mitzpa — Battle",          heb:"מצפה · מלחמה",   lat:31.858, lng:35.186, color:"#8b1a1a", persons:["Shmuel","Yisrael","Pelishtim"], themes:["War","Miracle","Prayer"], source:"Radak: Shmuel's olah during battle — not waiting but acting in faith — caused Hashem to thunder against the Philistines.", desc:"Philistines advance on Yisrael at Mitzpa. Shmuel offers an olah. Hashem thunders against the Philistines — Yisrael routs them." },
+  { verse:"7:12",    place:"Even HaEzer — Stone Set",  heb:"אבן העזר",        lat:31.888, lng:34.975, color:"#4a7a2a", persons:["Shmuel"],                    themes:["Victory","Memorial"],     source:"Metzudat David: Shmuel names the stone Even HaEzer — 'Till here Hashem helped us' — at the very site of past defeat.",  desc:"Shmuel sets up a stone between Mitzpa and Shen, naming it Even HaEzer — 'Thus far Hashem has helped us.'" },
+  { verse:"7:15-17", place:"Rama — Shmuel's Circuit",  heb:"רמה",             lat:31.928, lng:35.299, color:"#2a4a8a", persons:["Shmuel"],                    themes:["Leadership","Justice"],   source:"Radak: Shmuel's annual circuit — Beit El, Gilgal, Mitzpa, Rama — was a model of accessible justice for all tribes.", desc:"Shmuel judges Yisrael annually, circuiting Beit El, Gilgal, and Mitzpa, returning always to Rama where he builds a mizbe'ach." }
+];
+
+CHAPTERS['shmuel1_8'] = [
+  { verse:"8:1-3",   place:"Beer Sheva",               heb:"באר שבע",          lat:31.252, lng:34.791, color:"#8b1a1a", persons:["Shmuel","Yoel","Aviya"],     themes:["Corruption","Leadership"], source:"Radak: Shmuel sent his sons to Beer Sheva — the southern extreme — to judge, but they corrupted justice there.", desc:"Shmuel's sons Yoel and Aviya judge in Beer Sheva but take bribes and pervert justice." },
+  { verse:"8:4-22",  place:"Rama — King Demanded",     heb:"רמה",             lat:31.928, lng:35.299, color:"#8b1a1a", persons:["Shmuel","Elders of Yisrael"], themes:["Kingship","Warning"],     source:"Abarbanel: The demand for a king was a rejection of divine sovereignty — Shmuel's warning about kings proved prophetic.", desc:"The elders of Yisrael come to Shmuel at Rama demanding a king. Hashem tells Shmuel: they have rejected Me, not you." }
+];
+
+CHAPTERS['shmuel1_9'] = [
+  { verse:"9:1-4",   place:"Land of Binyamin",         heb:"ארץ בנימין",      lat:31.950, lng:35.250, color:"#2a4a8a", persons:["Shaul","Kish"],              themes:["Providence","Journey"],   source:"Radak: Shaul searches through three regions — Efraim, Shalisha, Shaalim — before reaching Binyamin's land.",        desc:"Kish of Binyamin sends his son Shaul with a servant to search for lost donkeys across the hill country." },
+  { verse:"9:5-10",  place:"Land of Tzuf",             heb:"ארץ צוף",          lat:31.928, lng:35.299, color:"#2a4a8a", persons:["Shaul","Servant"],           themes:["Providence","Journey"],   source:"Rashi: Etz Tzuf is near Rama — the servant's suggestion to consult 'the man of God' was divinely guided.",           desc:"Near the land of Tzuf, Shaul's servant suggests consulting the local man of God — Shmuel — about the donkeys." },
+  { verse:"9:11-24", place:"Rama — Shaul Meets Shmuel",heb:"רמה",             lat:31.928, lng:35.299, color:"#c8962a", persons:["Shaul","Shmuel"],            themes:["Providence","Kingship"],  source:"Malbim: Shmuel had been told the day before that a Binyaminite would arrive — every detail of their meeting was arranged.", desc:"Shaul meets Shmuel at the city gate of Rama. Shmuel, forewarned by Hashem, honors Shaul at a feast of thirty guests." },
+  { verse:"9:25-27", place:"Rama — Rooftop",           heb:"רמה · הגג",       lat:31.928, lng:35.300, color:"#c8962a", persons:["Shaul","Shmuel"],            themes:["Kingship","Providence"],  source:"Radak: The private rooftop conversation — before dawn, outside the city — marks the moment of Shaul's separation for kingship.", desc:"Shmuel speaks privately with Shaul on the rooftop. At dawn they rise and Shmuel walks Shaul to the edge of the city." }
+];
+
+CHAPTERS['shmuel1_10'] = [
+  { verse:"10:1",    place:"Rama — Anointing",         heb:"רמה",             lat:31.928, lng:35.299, color:"#c8962a", persons:["Shmuel","Shaul"],            themes:["Kingship","Anointing"],   source:"Rashi: The vial of oil — pak shemen — poured on Shaul's head is the first anointing of a king in Yisrael's history.", desc:"Shmuel takes a vial of oil and pours it on Shaul's head, kissing him — 'Hashem has anointed you prince over His people.'" },
+  { verse:"10:2",    place:"Kever Rachel",             heb:"קבר רחל",          lat:31.716, lng:35.208, color:"#2a4a8a", persons:["Shaul","Two Men"],           themes:["Sign","Providence"],      source:"Radak: Shmuel gives three signs — each confirms the anointing is real. The first: two men at Rachel's tomb.",           desc:"Shaul will meet two men at Rachel's Tomb near Binyamin's border — they'll confirm the donkeys are found." },
+  { verse:"10:3-4",  place:"Tavor Oak — Devora's Tree",heb:"אלון תבור",        lat:32.686, lng:35.392, color:"#2a4a8a", persons:["Shaul","Three Men"],         themes:["Sign","Providence"],      source:"Metzudat David: Three men going to Beit El — the central sanctuary — bear bread and wine as first-fruit offerings.",    desc:"At the Tavor Oak Shaul meets three men going to Beit El — they give him two loaves of bread." },
+  { verse:"10:5-6",  place:"Givat HaElohim",           heb:"גבעת האלהים",      lat:31.895, lng:35.225, color:"#c8962a", persons:["Shaul","Band of Prophets"],  themes:["Prophecy","Spirit"],      source:"Rashi: Givat HaElohim — 'Hill of God' — where a Philistine garrison stood, yet prophets gathered. Spirit can come anywhere.", desc:"At Givat HaElohim Shaul encounters a band of prophets. The spirit of Hashem rushes upon him — he prophesies among them." },
+  { verse:"10:17-25",place:"Mitzpa — King Proclaimed", heb:"מצפה",             lat:31.858, lng:35.186, color:"#c8962a", persons:["Shmuel","Shaul","Yisrael"],  themes:["Kingship","Assembly"],    source:"Abarbanel: Shaul's hiding among the baggage shows innate humility — a quality that initially made him fit to reign.",    desc:"Shmuel assembles Yisrael at Mitzpa. Shaul is chosen by lot — but is found hiding among the baggage. Proclaimed king." }
+];
+
+CHAPTERS['shmuel1_11'] = [
+  { verse:"11:1-2",  place:"Yavesh Gilad",             heb:"יביש גלעד",        lat:32.456, lng:35.587, color:"#8b1a1a", persons:["Nachash","Men of Yavesh"],   themes:["War","Threat"],           source:"Radak: Nachash HaAmoni — 'Snake the Ammonite' — besieged Yavesh Gilad and demanded to gouge out all right eyes.",   desc:"Nachash the Ammonite besieges Yavesh Gilad and demands to gouge out the right eye of every man as a disgrace." },
+  { verse:"11:3-8",  place:"Giva of Shaul",            heb:"גבעת שאול",        lat:31.852, lng:35.228, color:"#2a4a8a", persons:["Shaul","Messengers"],        themes:["Leadership","Rescue"],    source:"Malbim: Shaul's dismemberment of the oxen — sent throughout all borders — echoes the concubine of Giva, summoning all Yisrael.", desc:"Messengers reach Shaul at Giva. He cuts oxen and sends pieces throughout Yisrael: 'Whoever doesn't follow Shaul and Shmuel — so shall be done to his oxen.'" },
+  { verse:"11:8",    place:"Bezek",                    heb:"בזק",               lat:32.180, lng:35.420, color:"#4a7a2a", persons:["Shaul","Yisrael","Yehuda"],  themes:["Assembly","War"],         source:"Rashi: Bezek was chosen as the muster point — centrally located between the tribes, in Menashe near Yissachar.",     desc:"Shaul musters the army at Bezek — 300,000 from Yisrael and 30,000 from Yehuda." },
+  { verse:"11:9-11", place:"Yavesh Gilad — Battle",   heb:"יביש גלעד",        lat:32.456, lng:35.587, color:"#4a7a2a", persons:["Shaul","Yisrael","Nachash"],  themes:["Victory","War","Rescue"], source:"Radak: Shaul attacked at the morning watch — the final watch before dawn — a classic surprise assault tactic.",       desc:"Shaul's army falls on the Ammonites at the morning watch. They are routed until the heat of day. Yavesh Gilad is saved." },
+  { verse:"11:14-15",place:"Gilgal — Kingdom Renewed", heb:"גלגל",             lat:31.870, lng:35.444, color:"#c8962a", persons:["Shmuel","Shaul","Yisrael"],  themes:["Kingship","Assembly"],    source:"Abarbanel: Gilgal — site of the first camp in Canaan — was chosen deliberately to renew the kingdom where the nation began.", desc:"Shmuel calls Yisrael to Gilgal. There they renew the kingdom — offering shelamim before Hashem. Great rejoicing." }
+];
+
+CHAPTERS['shmuel1_12'] = [
+  { verse:"12:1-5",  place:"Gilgal — Shmuel's Address",heb:"גלגל",             lat:31.870, lng:35.444, color:"#2a4a8a", persons:["Shmuel","Yisrael"],          themes:["Leadership","Integrity"], source:"Radak: Shmuel demands witnesses — calling heaven and earth — to confirm his integrity. The people answer unanimously.",  desc:"Shmuel addresses all Yisrael at Gilgal, calling witnesses to testify he never took a bribe or oppressed anyone." },
+  { verse:"12:6-18", place:"Gilgal — Covenant Warning",heb:"גלגל",             lat:31.870, lng:35.444, color:"#8b1a1a", persons:["Shmuel","Yisrael"],          themes:["Warning","Covenant"],     source:"Malbim: Thunder and rain at wheat harvest — a supernatural sign, since rain never falls in Eretz Yisrael in summer.",   desc:"Shmuel reviews Yisrael's history and warns: if you and your king rebel against Hashem, His hand will be against you. Thunder and rain at harvest confirm his words." }
+];
+
+CHAPTERS['shmuel1_13'] = [
+  { verse:"13:1-4",  place:"Geva",                     heb:"גבע",               lat:31.853, lng:35.254, color:"#4a7a2a", persons:["Yonatan","Yisrael"],         themes:["War","Courage"],          source:"Rashi: Yonatan's attack on the Philistine garrison at Geva is one of the great acts of personal bravery in Tanach.",   desc:"Yonatan strikes the Philistine garrison at Geva. The land trembles. Shaul blows the shofar throughout the land." },
+  { verse:"13:5-7",  place:"Mikhmash",                 heb:"מכמש",              lat:31.890, lng:35.280, color:"#8b1a1a", persons:["Pelishtim","Shaul"],         themes:["War","Encampment"],       source:"Radak: The Philistines camped at Mikhmash in overwhelming numbers — 30,000 chariots, 6,000 horsemen, infantry as the sand.", desc:"Philistines mass at Mikhmash in enormous force. Yisrael trembles and hides in caves, cisterns, and across the Yarden." },
+  { verse:"13:8-14", place:"Gilgal — Shaul's Sin",     heb:"גלגל",             lat:31.870, lng:35.444, color:"#8b1a1a", persons:["Shaul","Shmuel"],            themes:["Sin","Kingship","Warning"],source:"Abarbanel: Shaul's sin was not impatience but usurping the priestly role — the boundary between king and kohen.",    desc:"Shaul waits seven days for Shmuel at Gilgal. As the people scatter, he offers the olah himself. Shmuel arrives and rebukes him — his kingdom will not endure." },
+  { verse:"13:16-23",place:"Geva — Philistine Raids",  heb:"גבע",               lat:31.853, lng:35.254, color:"#8b1a1a", persons:["Shaul","Yonatan","Pelishtim"], themes:["War","Hardship"],        source:"Radak: No sword or spear among all Yisrael — only Shaul and Yonatan had weapons. The Philistines controlled the iron.",  desc:"Philistines raid from three directions. No blacksmith allowed in Yisrael. Only Shaul and Yonatan have sword or spear." }
+];
+
+CHAPTERS['shmuel1_14'] = [
+  { verse:"14:1-15", place:"Mikhmash Pass",            heb:"מעבר מכמש",        lat:31.893, lng:35.284, color:"#c8962a", persons:["Yonatan","Armor-Bearer"],    themes:["Courage","Faith","Miracle"],source:"Malbim: Yonatan's sign — 'come up to us' — shows his theology: if Hashem wills it, He can save by many or by few.",  desc:"Yonatan and his armor-bearer cross to the Philistine garrison alone. They kill twenty men. A great trembling falls on the camp." },
+  { verse:"14:16-23",place:"Giva — Lookout",           heb:"גבע · המצפה",      lat:31.852, lng:35.228, color:"#4a7a2a", persons:["Shaul","Yisrael"],           themes:["Victory","War","Miracle"],source:"Rashi: Shaul's lookout saw the Philistine camp 'melting away' — the trembling was supernatural, causing them to strike each other.", desc:"Shaul's watchmen at Giva see the Philistine camp in chaos. Yisrael rallies. Hebrews who had defected return. Great victory." },
+  { verse:"14:24-46",place:"Yaavetz Forest",           heb:"יער יעבץ",          lat:31.870, lng:35.340, color:"#8b1a1a", persons:["Shaul","Yonatan","Yisrael"], themes:["Oath","Near-Death","Conflict"],source:"Radak: Shaul's rash oath — 'cursed is he who eats before evening' — weakened the army and nearly cost Yonatan his life.", desc:"Shaul's rash oath forbids eating. Yonatan unknowingly dips his staff in honey. The people save him from Shaul's death sentence." },
+  { verse:"14:47-52",place:"Yisrael — Shaul's Wars",   heb:"ארץ ישראל",        lat:32.000, lng:35.000, color:"#4a7a2a", persons:["Shaul","Avner"],             themes:["War","Kingship"],         source:"Metzudat David: Shaul fought enemies on every border — Moav, Amon, Edom, Tzova, Pelishtim, Amalek — continuously.", desc:"Summary of Shaul's wars: Moav, Amon, Edom, Tzova, Pelishtim, Amalek. Wherever he turned, he was victorious." }
+];
+
+CHAPTERS['shmuel1_15'] = [
+  { verse:"15:1-9",  place:"Telaim — Muster",          heb:"טלאים",             lat:31.060, lng:34.870, color:"#4a7a2a", persons:["Shaul","Yisrael"],           themes:["War","Command"],          source:"Rashi: Telaim — in the Negev near Amalek's border — where Shaul mustered 210,000 men for the war against Amalek.",    desc:"Shaul musters Yisrael at Telaim and attacks Amalek. He defeats them but spares King Agag and the best livestock." },
+  { verse:"15:7",    place:"Chavila to Shur",          heb:"מחוילה עד שור",    lat:30.500, lng:34.500, color:"#8b1a1a", persons:["Shaul","Amalek"],            themes:["War","Disobedience"],     source:"Radak: Chavila to Shur — the full extent of Amalek's territory, stretching from the Arabian peninsula to Egypt's border.", desc:"Shaul strikes Amalek from Chavila to Shur — the full breadth of their territory — but spares Agag and the best animals." },
+  { verse:"15:10-23",place:"Carmel — Shaul's Monument",heb:"כרמל",              lat:31.420, lng:35.100, color:"#8b1a1a", persons:["Shaul","Shmuel"],            themes:["Sin","Rejection","Warning"],source:"Malbim: 'To obey is better than sacrifice' — Shmuel's words crystallize the hierarchy of mitzvot: obedience over ritual.", desc:"Shaul erects a monument at Carmel (in Yehuda). Shmuel confronts him: you have rejected Hashem's word — He has rejected you as king." },
+  { verse:"15:24-35",place:"Gilgal — Final Parting",   heb:"גלגל",             lat:31.870, lng:35.444, color:"#8b1a1a", persons:["Shaul","Shmuel","Agag"],     themes:["Rejection","Farewell"],   source:"Radak: Shmuel hewed Agag before Hashem at Gilgal — completing the cherem that Shaul had failed to carry out.",          desc:"At Gilgal, Shmuel executes Agag. He tells Shaul that Hashem has torn the kingdom from him. Shmuel never sees Shaul again." }
+];
+
+CHAPTERS['shmuel1_16'] = [
+  { verse:"16:1-5",  place:"Beit Lechem",              heb:"בית לחם",           lat:31.705, lng:35.208, color:"#2a4a8a", persons:["Shmuel","Yishai"],           themes:["Anointing","Providence"], source:"Radak: Shmuel fears Shaul will kill him — Hashem instructs a ruse: come to sacrifice, not to anoint.",               desc:"Hashem sends Shmuel to Beit Lechem to anoint one of Yishai's sons. The elders tremble at his arrival." },
+  { verse:"16:6-10", place:"Beit Lechem — Yishai's House",heb:"בית לחם",        lat:31.705, lng:35.209, color:"#2a4a8a", persons:["Shmuel","Yishai","Eliav"],   themes:["Anointing","Rejection"],  source:"Rashi: 'Not what man sees' — each of the seven sons passes before Shmuel and each is rejected. The lesson: God sees the heart.", desc:"Seven sons of Yishai pass before Shmuel. Each time Hashem says: 'Not this one.' The one not yet summoned is tending sheep." },
+  { verse:"16:11-13",place:"Beit Lechem — Anointing of Dovid",heb:"בית לחם",   lat:31.705, lng:35.209, color:"#c8962a", persons:["Shmuel","Dovid","Yishai"],   themes:["Anointing","Dovid","Providence"],source:"Malbim: Dovid was ruddy with beautiful eyes — signs of a warrior and a visionary combined in one person.",          desc:"Dovid is brought from the field. Hashem says: 'Rise and anoint him, for this is he.' Shmuel anoints Dovid among his brothers — the spirit of Hashem rushes upon him." },
+  { verse:"16:14-23",place:"Giva of Shaul",            heb:"גבעת שאול",        lat:31.852, lng:35.228, color:"#8b1a1a", persons:["Shaul","Dovid"],             themes:["Dovid","Spirit","Decline"],source:"Abarbanel: Dovid's music soothed Shaul's evil spirit — a remarkable irony: the anointed king serves the rejected one.",  desc:"An evil spirit torments Shaul. Dovid is brought to Giva to play the kinnor for him. Shaul loves him greatly — makes him armor-bearer." }
+];
+
+
+CHAPTERS['shmuel1_18'] = [
+  { verse:"18:1-4",  place:"Giva of Shaul — Covenant",  heb:"גבעת שאול",       lat:31.852, lng:35.228, color:"#2a4a8a", persons:["Dovid","Yonatan"],           themes:["Friendship","Covenant"],   source:"Radak: Yonatan gave Dovid his robe, sword, bow, and belt — everything that symbolized royal heir, freely surrendered.", desc:"Yonatan's soul is bound with Dovid's. He strips off his royal robe and gives it to Dovid along with his weapons — a covenant of deep love." },
+  { verse:"18:6-9",  place:"Cities of Yisrael",         heb:"ערי ישראל",        lat:32.000, lng:35.100, color:"#8b1a1a", persons:["Shaul","Dovid","Women"],     themes:["Jealousy","Rivalry"],      source:"Malbim: 'Shaul his thousands, Dovid his ten thousands' — the song that poisoned everything. Shaul heard it in every city.", desc:"Women come out singing and dancing from all cities: 'Shaul has slain his thousands, Dovid his ten thousands.' Shaul's jealousy ignites." },
+  { verse:"18:10-11",place:"Giva — Shaul's Court",      heb:"גבעת שאול",       lat:31.852, lng:35.229, color:"#8b1a1a", persons:["Shaul","Dovid"],             themes:["Danger","Persecution"],    source:"Rashi: Shaul hurled the spear twice — the repeated attempt shows the evil spirit had fully taken hold.",                desc:"An evil spirit comes upon Shaul. He hurls his spear at Dovid while Dovid plays the kinnor — twice. Dovid evades him both times." },
+  { verse:"18:13",   place:"Military Campaigns",        heb:"",                 lat:31.800, lng:35.000, color:"#4a7a2a", persons:["Dovid"],                     themes:["Leadership","War"],        source:"Abarbanel: Shaul sent Dovid away hoping he would die in battle — but every campaign increased Dovid's fame.",            desc:"Shaul sends Dovid out to lead campaigns, removing him from court. Dovid succeeds in everything — all Yisrael loves him." },
+  { verse:"18:17-27",place:"Giva — Marriage of Michal", heb:"גבעת שאול",       lat:31.852, lng:35.228, color:"#c8962a", persons:["Shaul","Dovid","Michal"],    themes:["Marriage","Trap"],         source:"Radak: The bride-price of 100 Philistine foreskins was designed to get Dovid killed — but he brought 200.",              desc:"Shaul offers his daughter Michal to Dovid as a trap — demanding 100 Philistine foreskins as bride-price. Dovid brings 200." }
+];
+
+CHAPTERS['shmuel1_19'] = [
+  { verse:"19:1-7",  place:"Giva — Yonatan's Mediation",heb:"גבעת שאול",       lat:31.852, lng:35.228, color:"#2a4a8a", persons:["Yonatan","Shaul","Dovid"],   themes:["Friendship","Rescue"],     source:"Malbim: Yonatan's argument was legal and moral — he listed Dovid's merits before Shaul and won a temporary reprieve.",   desc:"Yonatan persuades Shaul not to kill Dovid, listing his loyal service. Shaul swears Dovid will not be put to death." },
+  { verse:"19:9-10", place:"Giva — Third Spear",        heb:"גבעת שאול",       lat:31.852, lng:35.229, color:"#8b1a1a", persons:["Shaul","Dovid"],             themes:["Danger","Persecution"],    source:"Rashi: The oath was broken almost immediately — showing Shaul's instability and the depth of his murderous jealousy.",    desc:"The evil spirit returns. Shaul hurls his spear at Dovid a third time. Dovid escapes in the night." },
+  { verse:"19:11-17",place:"Dovid's House — Escape",    heb:"בית דוד",          lat:31.852, lng:35.230, color:"#c8962a", persons:["Michal","Dovid","Shaul"],    themes:["Escape","Loyalty"],        source:"Radak: Michal's terafim deception bought Dovid time — she risked herself to save him.",                                  desc:"Michal lowers Dovid through the window by night. She places a terafim image in his bed to deceive Shaul's messengers." },
+  { verse:"19:18-24",place:"Nayot at Rama",             heb:"נויות ברמה",       lat:31.935, lng:35.299, color:"#c8962a", persons:["Dovid","Shmuel","Shaul"],    themes:["Prophecy","Miracle","Refuge"],source:"Yalkut Shimoni: Even Shaul's messengers — sent three times — were overcome by prophecy before reaching Dovid.",      desc:"Dovid flees to Shmuel at Nayot in Rama. Shaul's three sets of messengers all fall into prophecy. Shaul himself comes and prophesies naked all day." }
+];
+
+CHAPTERS['shmuel1_20'] = [
+  { verse:"20:1-23", place:"Field near Giva",           heb:"השדה",             lat:31.856, lng:35.232, color:"#2a4a8a", persons:["Dovid","Yonatan"],           themes:["Friendship","Covenant","Plan"],source:"Abarbanel: The arrow signal — 'the arrow is beyond you' — was a brilliant code devised in the open field where ears could overhear.", desc:"Dovid and Yonatan meet secretly in the field. They devise an arrow signal: if Yonatan shoots beyond the lad, Dovid must flee. A covenant renewed with tears." },
+  { verse:"20:24-34",place:"Giva — New Moon Feast",     heb:"גבעת שאול",       lat:31.852, lng:35.228, color:"#8b1a1a", persons:["Shaul","Yonatan","Dovid"],   themes:["Conflict","Revelation"],   source:"Rashi: Shaul's anger at the new moon feast — when Dovid's place was empty two days — exploded into murderous rage at Yonatan.", desc:"Dovid is absent from the new moon feast. Shaul attacks Yonatan verbally and hurls a spear at him — confirming his murderous intent." },
+  { verse:"20:35-42",place:"Field — The Arrow Signal",  heb:"השדה",             lat:31.856, lng:35.234, color:"#2a4a8a", persons:["Dovid","Yonatan"],           themes:["Farewell","Friendship"],   source:"Malbim: Their final embrace in the field — Dovid weeping more — is one of the most moving scenes in all of Tanach.",     desc:"Yonatan shoots the arrow beyond the lad. The signal is clear. Dovid and Yonatan embrace and weep. 'Go in peace — our covenant stands forever.'" }
+];
+
+CHAPTERS['shmuel1_21'] = [
+  { verse:"21:2-7",  place:"Nov — City of Kohanim",     heb:"נוב",              lat:31.815, lng:35.248, color:"#c8962a", persons:["Dovid","Achimelech"],        themes:["Refuge","Bread","Danger"], source:"Rashi: Nov was the priestly city after Shilo's destruction — Dovid's arrival there set in motion its terrible fate.",    desc:"Dovid comes alone to Nov. Achimelech trembles. Dovid claims to be on royal business — asks for bread. Given the showbread." },
+  { verse:"21:8-10", place:"Nov — Golyat's Sword",      heb:"נוב",              lat:31.815, lng:35.248, color:"#c8962a", persons:["Dovid","Achimelech","Doeg"], themes:["Providence","Sword"],      source:"Radak: Golyat's sword — wrapped in a cloth behind the efod — had been kept as a sacred trophy. Dovid takes it now in flight.", desc:"Dovid takes Golyat's sword from Nov — the only weapon available. Doeg the Edomite, Shaul's chief shepherd, witnesses everything." },
+  { verse:"21:11-16",place:"Gat — Among the Pelishtim", heb:"גת",               lat:31.763, lng:34.853, color:"#8b1a1a", persons:["Dovid","Achish"],            themes:["Danger","Cunning","Exile"], source:"Malbim: Dovid feigned madness — scratching on the gate, letting saliva run — to escape recognition and death in Gat.",   desc:"Dovid flees to Gat, to King Achish. Recognized as 'slayer of ten thousands,' he feigns madness. Achish dismisses him as a lunatic." }
+];
+
+CHAPTERS['shmuel1_22'] = [
+  { verse:"22:1-2",  place:"Cave of Adullam",           heb:"מערת עדולם",       lat:31.688, lng:34.975, color:"#2a4a8a", persons:["Dovid","Family","Anashim"], themes:["Refuge","Leadership"],     source:"Radak: The cave of Adullam — in the Shephelah of Yehuda — became Dovid's first base. Four hundred men gathered to him there.", desc:"Dovid escapes to the cave of Adullam. His family joins him. Four hundred men — distressed, indebted, bitter — gather under his command." },
+  { verse:"22:3-4",  place:"Mitzpeh Moav",              heb:"מצפה מואב",        lat:31.200, lng:35.700, color:"#2a4a8a", persons:["Dovid","King of Moav"],      themes:["Exile","Family"],          source:"Abarbanel: Dovid placed his parents with the King of Moav — through his great-grandmother Rut, he had Moavite connections.", desc:"Dovid brings his father and mother to Mitzpeh Moav for safekeeping. The King of Moav hosts them while Dovid is in the stronghold." },
+  { verse:"22:5",    place:"Forest of Cheret",          heb:"יער חרת",           lat:31.650, lng:35.050, color:"#2a4a8a", persons:["Dovid","Gad"],              themes:["Exile","Prophecy"],        source:"Rashi: The prophet Gad tells Dovid not to remain in the stronghold — go to Yehuda. Dovid obeys immediately.",               desc:"The prophet Gad tells Dovid to go to the land of Yehuda. Dovid goes to the forest of Cheret." },
+  { verse:"22:6-19", place:"Giva — Massacre of Nov",    heb:"גבעת שאול · נוב",  lat:31.852, lng:35.228, color:"#8b1a1a", persons:["Shaul","Doeg","Kohanim"],    themes:["Massacre","Sin","Doeg"],   source:"Radak: Doeg killed 85 kohanim wearing the efod — the worst atrocity in the book. No Israelite soldier would raise a hand.", desc:"Doeg the Edomite reports Dovid's visit to Nov. Shaul commands the massacre of Nov's priests — 85 killed. Doeg slaughters the entire city." },
+  { verse:"22:20-23",place:"Dovid's Camp — Evyatar",    heb:"מחנה דוד",          lat:31.650, lng:35.050, color:"#c8962a", persons:["Dovid","Evyatar"],           themes:["Refuge","Guilt"],          source:"Malbim: Dovid says 'I caused the death of all your father's house' — an extraordinary admission of moral responsibility.", desc:"Evyatar son of Achimelech escapes and flees to Dovid with the efod. Dovid accepts responsibility and pledges to protect him." }
+];
+
+CHAPTERS['shmuel1_23'] = [
+  { verse:"23:1-5",  place:"Ke'ila",                    heb:"קעילה",             lat:31.606, lng:34.968, color:"#4a7a2a", persons:["Dovid","Pelishtim"],         themes:["War","Rescue","Consultation"],source:"Radak: Dovid consulted Hashem twice — his men's fear caused him to ask again, and both times Hashem confirmed: go.",  desc:"Dovid rescues the city of Ke'ila from a Philistine raid, striking them down and rescuing their threshing floors." },
+  { verse:"23:7-13", place:"Ke'ila — Betrayal Foreseen",heb:"קעילה",             lat:31.606, lng:34.968, color:"#8b1a1a", persons:["Dovid","Shaul"],             themes:["Betrayal","Consultation"],  source:"Abarbanel: Dovid asks the efod twice: will Shaul come? Will Ke'ila surrender me? Both answers: yes. He leaves immediately.", desc:"Shaul hears Dovid is in Ke'ila and marches. Dovid consults the efod: will Ke'ila betray him? Yes. He escapes with 600 men." },
+  { verse:"23:14-18",place:"Wilderness of Zif",         heb:"מדבר זיף",          lat:31.415, lng:35.090, color:"#2a4a8a", persons:["Dovid","Yonatan"],           themes:["Friendship","Courage","Covenant"],source:"Malbim: Yonatan's 'strengthening of Dovid's hand in God' — his last act of friendship — is one of the most beautiful moments in Tanach.", desc:"Yonatan finds Dovid in the wilderness of Zif and strengthens his hand in God. 'You shall be king over Yisrael.' Their last meeting." },
+  { verse:"23:19-26",place:"Wilderness of Maon",        heb:"מדבר מעון",          lat:31.380, lng:35.100, color:"#8b1a1a", persons:["Dovid","Shaul"],             themes:["Pursuit","Escape","Providence"],source:"Rashi: The mountain of Maon — Shaul circling one side, Dovid the other — until a messenger arrived and Shaul turned back.", desc:"Shaul pursues Dovid in the wilderness of Maon. Shaul circles one side of the mountain, Dovid the other. A messenger saves Dovid." },
+  { verse:"23:29",   place:"Ein Gedi",                  heb:"עין גדי",            lat:31.462, lng:35.390, color:"#2a4a8a", persons:["Dovid"],                     themes:["Refuge","Wilderness"],     source:"Radak: Ein Gedi — 'Spring of the Kid' — on the western shore of the Dead Sea. A dramatic stronghold in the Judean desert.", desc:"Dovid escapes to the strongholds of Ein Gedi on the Dead Sea shore." }
+];
+
+CHAPTERS['shmuel1_24'] = [
+  { verse:"24:1-8",  place:"Cave at Ein Gedi",          heb:"מערת עין גדי",     lat:31.462, lng:35.390, color:"#c8962a", persons:["Dovid","Shaul"],             themes:["Restraint","Kingship","Ethics"],source:"Malbim: Dovid cut the corner of Shaul's robe — even this small act caused his heart to smite him. True greatness restrained itself.", desc:"Shaul enters a cave to relieve himself — not knowing Dovid and his men are inside. Dovid secretly cuts the corner of Shaul's robe but refuses to harm him." },
+  { verse:"24:9-16", place:"Outside the Cave — Ein Gedi",heb:"עין גדי",          lat:31.463, lng:35.389, color:"#c8962a", persons:["Dovid","Shaul"],             themes:["Restraint","Confrontation"],source:"Abarbanel: Dovid's speech outside the cave — calling Shaul 'my father' — is a masterpiece of moral argument and filial respect.", desc:"Dovid calls out after Shaul, displaying the cut cloth. 'I will not harm you — see there is no evil in my hand.' Shaul weeps." },
+  { verse:"24:17-23",place:"Ein Gedi — Shaul's Oath",   heb:"עין גדי",           lat:31.462, lng:35.391, color:"#4a7a2a", persons:["Dovid","Shaul"],             themes:["Prophecy","Oath"],         source:"Radak: Shaul acknowledges Dovid will be king and extracts a promise not to cut off his seed — a king protecting his dynasty even in defeat.", desc:"Shaul confesses Dovid will surely be king and asks him to swear not to cut off his descendants. Dovid swears. They part." }
+];
+
+CHAPTERS['shmuel1_25'] = [
+  { verse:"25:1",    place:"Rama — Shmuel's Death",     heb:"רמה",               lat:31.928, lng:35.299, color:"#4a7a2a", persons:["Shmuel","Yisrael"],          themes:["Death","Mourning"],        source:"Radak: All Yisrael gathered and mourned — Shmuel had guided the nation from birth to death without taking anything from anyone.", desc:"Shmuel dies. All Yisrael gathers to mourn and bury him in Rama, his city." },
+  { verse:"25:2-13", place:"Wilderness of Paran — Carmel",heb:"מדבר פארן · כרמל",lat:31.420, lng:35.100, color:"#8b1a1a", persons:["Dovid","Naval","Avigayil"],  themes:["Ingratitude","Anger"],     source:"Abarbanel: Naval's name means 'fool' — the text confirms he acted according to his name, refusing Dovid's men who had protected his shepherds.", desc:"Naval the Calebite shears sheep at Carmel. Dovid's men ask for provisions — they protected his shepherds all season. Naval refuses contemptuously." },
+  { verse:"25:14-35",place:"Carmel — Avigayil's Intervention",heb:"כרמל",        lat:31.420, lng:35.101, color:"#c8962a", persons:["Avigayil","Dovid"],           themes:["Wisdom","Restraint","Providence"],source:"Malbim: Avigayil's speech — 'the life of my lord is bound in the bundle of the living' — is prophetic, referring to Dovid's eternal covenant.", desc:"Avigayil loads provisions and intercepts Dovid. Her wise speech stops him from taking vengeance. 'Hashem will establish you a sure house.'" },
+  { verse:"25:36-42",place:"Carmel — Naval's Death",    heb:"כרמל",              lat:31.420, lng:35.100, color:"#8b1a1a", persons:["Naval","Avigayil","Dovid"],   themes:["Death","Justice","Marriage"],source:"Rashi: Naval died exactly ten days after Avigayil told him what almost happened — he had a heart attack when he heard.", desc:"Naval learns what nearly happened — his heart dies within him, turns to stone. Ten days later Hashem strikes him. Dovid takes Avigayil as wife." }
+];
+
+CHAPTERS['shmuel1_26'] = [
+  { verse:"26:1-4",  place:"Hill of Chakila",           heb:"גבעת החכילה",      lat:31.380, lng:35.120, color:"#8b1a1a", persons:["Shaul","Dovid","Zifim"],     themes:["Pursuit","Betrayal"],      source:"Radak: The Zifites betrayed Dovid twice — chapters 23 and 26 — showing their persistent hostility and Shaul's relentless pursuit.", desc:"The Zifites betray Dovid to Shaul again. Shaul camps on the hill of Chakila. Dovid scouts the camp." },
+  { verse:"26:5-12", place:"Shaul's Camp — Night Raid", heb:"מחנה שאול",        lat:31.381, lng:35.119, color:"#c8962a", persons:["Dovid","Avishai","Shaul"],   themes:["Restraint","Courage","Providence"],source:"Malbim: A deep sleep fell on the entire camp — 'a slumber of Hashem.' Dovid's restraint here is even more remarkable than at Ein Gedi.", desc:"Dovid and Avishai creep into Shaul's camp at night. Shaul sleeps. Avishai urges killing him. Dovid refuses: 'Who can raise his hand against Hashem's anointed?'" },
+  { verse:"26:13-20",place:"Hilltop Opposite Shaul's Camp",heb:"ראש ההר",        lat:31.382, lng:35.121, color:"#c8962a", persons:["Dovid","Shaul","Avner"],     themes:["Confrontation","Ethics"],  source:"Abarbanel: Dovid rebukes Avner for failing to protect the king — using the spear and water jug as evidence that Shaul was in his hands.", desc:"From a hilltop, Dovid displays Shaul's spear and water jug. Shaul recognizes Dovid's voice and weeps: 'I have sinned, return my son Dovid.'" },
+  { verse:"26:21-25",place:"Parting of Ways",            heb:"",                  lat:31.382, lng:35.120, color:"#4a7a2a", persons:["Dovid","Shaul"],             themes:["Farewell","Prophecy"],     source:"Radak: 'Blessed are you my son Dovid, you will surely prevail' — Shaul's own lips prophesy what his hands tried to prevent.", desc:"Shaul blesses Dovid: 'You will surely prevail.' They part — never to meet again. Dovid does not trust the reconciliation." }
+];
+
+CHAPTERS['shmuel1_27'] = [
+  { verse:"27:1-4",  place:"Gat — Exile with Achish",   heb:"גת",                lat:31.763, lng:34.853, color:"#8b1a1a", persons:["Dovid","Achish"],            themes:["Exile","Strategy"],        source:"Radak: Dovid's reasoning: in Philistia, Shaul will stop searching. A calculated exile — painful but tactically necessary.", desc:"Dovid decides to escape to Philistia. He brings 600 men to Gat, to King Achish. Shaul stops searching for him." },
+  { verse:"27:5-7",  place:"Tziklag",                   heb:"צקלג",              lat:31.386, lng:34.583, color:"#2a4a8a", persons:["Dovid","Achish"],            themes:["Exile","Base"],            source:"Abarbanel: Tziklag — given to Dovid by Achish — became associated with Dovid's dynasty and remained a royal city of Yehuda.", desc:"Dovid asks Achish for a town. He is given Tziklag in the Negev. He lives there among the Philistines for sixteen months." },
+  { verse:"27:8-12", place:"Negev Raids",               heb:"הנגב",              lat:31.100, lng:34.700, color:"#4a7a2a", persons:["Dovid","Achish"],            themes:["War","Deception"],         source:"Rashi: Dovid raided Israel's ancient enemies — Geshurites, Girzites, Amalekites — while telling Achish he raided Yisrael.", desc:"Dovid raids ancient enemies of Yisrael in the Negev, leaving no survivor. He deceives Achish into thinking he raided Yehuda." }
+];
+
+CHAPTERS['shmuel1_28'] = [
+  { verse:"28:1-2",  place:"Afek — Philistine Muster",  heb:"אפק",               lat:32.103, lng:34.917, color:"#8b1a1a", persons:["Achish","Dovid","Pelishtim"], themes:["War","Dilemma"],          source:"Radak: Dovid's impossible position — mustered with Philistines against Yisrael — was resolved by divine providence through the other generals.", desc:"Philistines muster at Afek. Achish tells Dovid he must march with him against Yisrael. Dovid is in an impossible position." },
+  { verse:"28:3-7",  place:"Shunem — Philistine Camp",  heb:"שונם",              lat:32.601, lng:35.328, color:"#8b1a1a", persons:["Shaul","Pelishtim"],         themes:["Fear","Despair"],          source:"Malbim: Shaul's terror at seeing the Philistine camp — his heart trembling greatly — reflects his complete spiritual abandonment.", desc:"Philistines camp at Shunem, Yisrael at Gilboa. Shaul sees the Philistine camp and trembles. Hashem does not answer him — not by dreams, Urim, or prophets." },
+  { verse:"28:7-25", place:"Ein Dor",                   heb:"עין דור",            lat:32.618, lng:35.348, color:"#8b1a1a", persons:["Shaul","Witch","Shmuel"],    themes:["Desperation","Necromancy","Death"],source:"Abarbanel: Shmuel's shade truly appeared — the Witch herself was terrified, proving it was not her doing. The prophecy of death was real.", desc:"Shaul disguises himself and goes to the witch of Ein Dor at night. Shmuel's shade rises. The verdict: tomorrow you and your sons will be with me." }
+];
+
+CHAPTERS['shmuel1_29'] = [
+  { verse:"29:1-5",  place:"Afek — Dovid Dismissed",    heb:"אפק",               lat:32.103, lng:34.917, color:"#4a7a2a", persons:["Dovid","Achish","Philistine Generals"], themes:["Providence","Rescue"],  source:"Radak: The Philistine generals' suspicion — 'will he not reconcile with his master with our heads?' — was providential. Dovid was saved from an impossible choice.", desc:"Philistine generals object to Dovid marching with them. Achish dismisses Dovid despite his protests — divine providence removes him from the battle." },
+  { verse:"29:6-11", place:"Return to Tziklag",         heb:"צקלג",              lat:31.386, lng:34.583, color:"#4a7a2a", persons:["Dovid","Achish"],            themes:["Providence","Return"],     source:"Malbim: Achish's kind dismissal — 'you are good in my eyes as an angel of God' — shows Dovid maintained perfect cover throughout his exile.", desc:"Achish sends Dovid back. Dovid and his men return south toward Tziklag, while the Philistines march north toward Yizre'el." }
+];
+
+CHAPTERS['shmuel1_30'] = [
+  { verse:"30:1-6",  place:"Tziklag — Destroyed",       heb:"צקלג",              lat:31.386, lng:34.583, color:"#8b1a1a", persons:["Dovid","Amalek"],            themes:["Catastrophe","Crisis"],    source:"Abarbanel: 'Dovid strengthened himself in Hashem his God' — in the moment of total collapse, with his men speaking of stoning him, this is Dovid's greatest act of faith.", desc:"Dovid returns to find Tziklag burned and all women and children taken by Amalek. The men weep bitterly and speak of stoning Dovid. He strengthens himself in Hashem." },
+  { verse:"30:7-10", place:"Besor Stream",              heb:"נחל הבשור",          lat:31.250, lng:34.530, color:"#4a7a2a", persons:["Dovid","200 Men"],           themes:["Pursuit","Loyalty"],       source:"Rashi: Two hundred men were too exhausted to cross the Besor — Dovid left them with the baggage and continued with 400.",  desc:"Dovid pursues with 400 men. Two hundred are too exhausted to cross the Besor Stream and stay behind with the baggage." },
+  { verse:"30:11-20",place:"Negev — Egyptian Guide",    heb:"הנגב",              lat:31.150, lng:34.650, color:"#c8962a", persons:["Dovid","Egyptian Servant","Amalek"], themes:["Providence","Rescue"],  source:"Radak: The abandoned Egyptian slave — left to die by Amalek — became the providential guide who led Dovid directly to their camp.", desc:"A found Egyptian slave leads Dovid to the Amalekite camp. Dovid attacks from twilight to evening, rescuing every captive — nothing is missing." },
+  { verse:"30:21-31",place:"Besor Stream — Division",   heb:"נחל הבשור",          lat:31.250, lng:34.530, color:"#4a7a2a", persons:["Dovid","200 Men","400 Men"], themes:["Justice","Leadership"],    source:"Malbim: Dovid's ruling — equal share for those who stayed with the baggage — became a statute in Yisrael from that day.", desc:"Dovid reunites with the 200 who stayed at Besor. Wicked men object to sharing the spoil. Dovid rules: equal share for all — a law established for Yisrael." }
+];
+
+CHAPTERS['shmuel1_31'] = [
+  { verse:"31:1-3",  place:"Har HaGilboa",              heb:"הר הגלבוע",          lat:32.513, lng:35.393, color:"#8b1a1a", persons:["Shaul","Yonatan","Pelishtim"], themes:["Battle","Death","Catastrophe"],source:"Radak: Shaul's prayer before Gilboa — cursing the dew and rain — was absorbed by the mountain. Yizre'el Valley became the bloodiest battlefield in Tanach.", desc:"Battle joined on Har HaGilboa. Yisrael flees. Shaul's three sons — Yonatan, Avinadav, Malkishua — are killed. Shaul is gravely wounded by archers." },
+  { verse:"31:4-6",  place:"Har HaGilboa — Shaul's Death",heb:"הר הגלבוע",       lat:32.514, lng:35.392, color:"#8b1a1a", persons:["Shaul","Armor-Bearer"],      themes:["Death","End of Kingship"], source:"Abarbanel: Shaul's death by his own hand — to avoid Philistine torture — is tragic rather than heroic. His armor-bearer follows immediately.",  desc:"Shaul asks his armor-bearer to kill him. Refused, he falls on his own sword. His armor-bearer falls on his sword too. Shaul and his three sons die that day." },
+  { verse:"31:7",    place:"Yizre'el Valley — Flight",   heb:"עמק יזרעאל",        lat:32.560, lng:35.300, color:"#8b1a1a", persons:["Yisrael"],                   themes:["Catastrophe","Flight"],    source:"Radak: The abandonment of the valley cities — from Beit She'an to the Yarden — gave Philistines control of the entire northern corridor.", desc:"Men of Yisrael abandon their cities and flee. Philistines occupy them — including towns across the Yarden valley." },
+  { verse:"31:8-10", place:"Beit She'an",                heb:"בית שאן",            lat:32.499, lng:35.499, color:"#8b1a1a", persons:["Pelishtim","Shaul"],         themes:["Desecration","Shame"],     source:"Malbim: Hanging Shaul's body on the walls of Beit She'an — at the crossroads of the valleys — was maximum humiliation, visible to all traveling through.", desc:"Philistines find Shaul's body, take his armor to the temple of Ashtarot, and hang his body and his sons' bodies on the wall of Beit She'an." },
+  { verse:"31:11-13",place:"Yavesh Gilad — Rescue",      heb:"יביש גלעד",          lat:32.456, lng:35.587, color:"#4a7a2a", persons:["Men of Yavesh Gilad"],       themes:["Loyalty","Chesed","Burial"],source:"Rashi: The men of Yavesh Gilad walked all night to rescue Shaul's body — repaying the chesed he had shown them at the beginning of his reign.", desc:"The men of Yavesh Gilad walk all night to Beit She'an, take Shaul's body and those of his sons, burn them, bury the bones under a tamarisk tree." }
+];
+
+
+var BOOKS = {
+  shmuel1: {
+    label: 'Shmuel I',
+    hebrewLabel: 'שמואל א',
+    chapters: [
+      { num: 1,  label: '1 — Chana and Shmuel',                   key: 'shmuel1_1'  },
+      { num: 2,  label: '2 — Chana\'s Song; Sons of Eli',        key: 'shmuel1_2'  },
+      { num: 3,  label: '3 — Shmuel\'s Calling',                 key: 'shmuel1_3'  },
+      { num: 4,  label: '4 — Ark Captured',                       key: 'shmuel1_4'  },
+      { num: 5,  label: '5 — Ark in Philistia',                   key: 'shmuel1_5'  },
+      { num: 6,  label: '6 — Ark Returns',                        key: 'shmuel1_6'  },
+      { num: 7,  label: '7 — Shmuel Judges; Even HaEzer',         key: 'shmuel1_7'  },
+      { num: 8,  label: '8 — Demand for a King',                  key: 'shmuel1_8'  },
+      { num: 9,  label: '9 — Shaul Seeks Donkeys',                key: 'shmuel1_9'  },
+      { num: 10, label: '10 — Shaul Anointed',                    key: 'shmuel1_10' },
+      { num: 11, label: '11 — Yavesh Gilad; Kingdom Renewed',     key: 'shmuel1_11' },
+      { num: 12, label: '12 — Shmuel\'s Farewell Address',       key: 'shmuel1_12' },
+      { num: 13, label: '13 — Mikhmash; Shaul\'s Sin',           key: 'shmuel1_13' },
+      { num: 14, label: '14 — Yonatan at Mikhmash Pass',          key: 'shmuel1_14' },
+      { num: 15, label: '15 — Amalek; Shaul Rejected',            key: 'shmuel1_15' },
+      { num: 16, label: '16 — Dovid Anointed',                    key: 'shmuel1_16' },
+      { num: 17, label: '17 — Dovid and Golyat',                  key: 'shmuel1_17' },
+      { num: 18, label: '18 — Shaul\'s Jealousy; Michal',        key: 'shmuel1_18' },
+      { num: 19, label: '19 — Dovid Flees; Nayot at Rama',        key: 'shmuel1_19' },
+      { num: 20, label: '20 — Yonatan\'s Arrow; Final Parting',  key: 'shmuel1_20' },
+      { num: 21, label: '21 — Nov; Gat; Feigned Madness',         key: 'shmuel1_21' },
+      { num: 22, label: '22 — Adullam; Massacre of Nov',          key: 'shmuel1_22' },
+      { num: 23, label: '23 — Ke\'ila; Zif; Ein Gedi',           key: 'shmuel1_23' },
+      { num: 24, label: '24 — Cave at Ein Gedi',                  key: 'shmuel1_24' },
+      { num: 25, label: '25 — Shmuel Dies; Naval; Avigayil',      key: 'shmuel1_25' },
+      { num: 26, label: '26 — Chakila; Night Raid',               key: 'shmuel1_26' },
+      { num: 27, label: '27 — Exile in Gat; Tziklag',             key: 'shmuel1_27' },
+      { num: 28, label: '28 — Witch of Ein Dor',                  key: 'shmuel1_28' },
+      { num: 29, label: '29 — Dovid Dismissed at Afek',           key: 'shmuel1_29' },
+      { num: 30, label: '30 — Tziklag Destroyed; Amalek Routed',  key: 'shmuel1_30' },
+      { num: 31, label: '31 — Shaul\'s Death at Gilboa',         key: 'shmuel1_31' }
+    ]
+  },
+  shmuel2: {
+    label: 'Shmuel II',
+    hebrewLabel: 'שמואל ב',
+    chapters: [
+      { num: 1,  label: '1 — Lament for Shaul and Yonatan',      key: 'shmuel2_1'  },
+      { num: 2,  label: '2 — Dovid Anointed at Chevron',          key: 'shmuel2_2'  },
+      { num: 3,  label: '3 — Avner Defects; Civil War',           key: 'shmuel2_3'  },
+      { num: 4,  label: '4 — Ish-Boshet Assassinated',            key: 'shmuel2_4'  },
+      { num: 5,  label: '5 — United Kingdom; Yerushalayim',       key: 'shmuel2_5'  },
+      { num: 6,  label: '6 — Ark Brought to Yerushalayim',        key: 'shmuel2_6'  },
+      { num: 7,  label: '7 — Natan\'s Prophecy; Davidic Covenant',key: 'shmuel2_7' },
+      { num: 8,  label: '8 — Dovid\'s Empire',                   key: 'shmuel2_8'  },
+      { num: 9,  label: '9 — Chesed for Mephiboshet',             key: 'shmuel2_9'  },
+      { num: 10, label: '10 — Ammon and Aram Defeated',           key: 'shmuel2_10' },
+      { num: 11, label: '11 — Batsheva; Uriya; Sin',              key: 'shmuel2_11' },
+      { num: 12, label: '12 — Natan\'s Rebuke; Rabbah Captured', key: 'shmuel2_12' },
+      { num: 13, label: '13 — Amnon and Tamar; Avshalom Flees',   key: 'shmuel2_13' },
+      { num: 14, label: '14 — Avshalom Returns to Yerushalayim',  key: 'shmuel2_14' },
+      { num: 15, label: '15 — Avshalom\'s Rebellion; Dovid Flees',key: 'shmuel2_15' },
+      { num: 16, label: '16 — Shimei Curses; Avshalom Enters',    key: 'shmuel2_16' },
+      { num: 17, label: '17 — Battle of Counsel; Machanayim',     key: 'shmuel2_17' },
+      { num: 18, label: '18 — Forest of Efraim; Avshalom Dies',   key: 'shmuel2_18' },
+      { num: 19, label: '19 — Dovid Returns; Reconciliations',    key: 'shmuel2_19' },
+      { num: 20, label: '20 — Sheva\'s Revolt; Avel Beit Maakha',key: 'shmuel2_20' },
+      { num: 21, label: '21 — Famine; Rizpa; Philistine Giants',  key: 'shmuel2_21' },
+      { num: 22, label: '22 — Dovid\'s Song of Thanksgiving',    key: 'shmuel2_22' },
+      { num: 23, label: '23 — Last Words; The Giborim',           key: 'shmuel2_23' },
+      { num: 24, label: '24 — Census; Plague; Goren Aravna',      key: 'shmuel2_24' }
+    ]
+  }
+};
+
+
+// ── SHMUEL II ─────────────────────────────────────────────────
+
+CHAPTERS['shmuel2_1'] = [
+  { verse:"1:1-4",   place:"Tziklag",                  heb:"צקלג",             lat:31.386, lng:34.583, color:"#2a4a8a", persons:["Dovid","Amalekite Messenger"], themes:["News","Death","Kingship"], source:"Radak: The messenger brought the crown and armband as proof — and as a bid for reward. His lie cost him his life.", desc:"Dovid returns to Tziklag from the Amalek campaign. A messenger arrives from the Gilboa battlefield bringing Shaul's crown and armband." },
+  { verse:"1:5-16",  place:"Tziklag — Execution",      heb:"צקלג",             lat:31.386, lng:34.584, color:"#8b1a1a", persons:["Dovid","Amalekite Messenger"], themes:["Justice","Death"],         source:"Abarbanel: The messenger thought Dovid would reward him — instead Dovid executed him for claiming to kill Hashem's anointed.", desc:"Dovid questions the messenger. He claims he killed Shaul at Shaul's own request. Dovid has him executed: 'Your blood is on your own head.'" },
+  { verse:"1:17-27", place:"Tziklag — Kinah",          heb:"צקלג",             lat:31.386, lng:34.583, color:"#2a4a8a", persons:["Dovid","Shaul","Yonatan"],    themes:["Mourning","Elegy","Loyalty"], source:"Malbim: 'The beauty of Yisrael is slain upon your high places' — Dovid's lament for Shaul and Yonatan is one of the greatest elegies in world literature.", desc:"Dovid composes the 'Bow' lament over Shaul and Yonatan: 'How the mighty have fallen.' He commands it to be taught to all Yisrael." }
+];
+
+CHAPTERS['shmuel2_2'] = [
+  { verse:"2:1-4",   place:"Chevron — Anointing",      heb:"חברון",            lat:31.532, lng:35.095, color:"#c8962a", persons:["Dovid","Men of Yehuda"],      themes:["Kingship","Anointing"],    source:"Radak: Chevron was chosen by divine instruction — Dovid asked the efod and was told to go up to Yehuda. Chevron had been Kalev's inheritance.", desc:"Dovid moves to Chevron with his families and followers. The men of Yehuda anoint him king over the house of Yehuda." },
+  { verse:"2:5-7",   place:"Yavesh Gilad",             heb:"יביש גלעד",        lat:32.456, lng:35.587, color:"#2a4a8a", persons:["Dovid","Men of Yavesh Gilad"], themes:["Loyalty","Chesed","Diplomacy"], source:"Abarbanel: Dovid's message to Yavesh Gilad — blessing them for burying Shaul — was also a political opening, inviting them to accept his kingship.", desc:"Dovid sends a message of blessing to Yavesh Gilad for burying Shaul, and signals that Yehuda has anointed him king." },
+  { verse:"2:8-11",  place:"Machanayim",               heb:"מחניים",            lat:32.325, lng:35.617, color:"#8b1a1a", persons:["Ish-Boshet","Avner"],         themes:["Rivalry","Kingship","War"],source:"Radak: Avner chose Machanayim — east of the Yarden — as a safe base, out of Dovid's reach. The northern tribes followed Shaul's house.", desc:"Avner son of Ner installs Ish-Boshet son of Shaul as king over Yisrael at Machanayim. Civil war begins — Dovid over Yehuda, Ish-Boshet over Yisrael." },
+  { verse:"2:12-17", place:"Givon — Pool",             heb:"גבעון · הברכה",    lat:31.837, lng:35.176, color:"#8b1a1a", persons:["Avner","Yoav","Young Men"],   themes:["War","Battle","Rivalry"],  source:"Rashi: The 'game' of twelve against twelve became a slaughter — all twenty-four died together, the place called Field of Edges (Chelkat HaTzurim).", desc:"Avner and Yoav meet at the Pool of Givon. Twelve young men from each side fight and kill each other. A fierce battle follows — Avner's men are defeated." },
+  { verse:"2:18-23", place:"Givon — Pursuit of Avner", heb:"גבעון",             lat:31.837, lng:35.177, color:"#8b1a1a", persons:["Asahel","Avner"],             themes:["War","Death","Pursuit"],  source:"Radak: Avner warned Asahel three times to turn away. When he refused, Avner killed him with a backward thrust — a reluctant killing that had dire consequences.", desc:"Asahel pursues Avner relentlessly. Avner warns him to stop. Asahel refuses and Avner kills him. Yoav and Avishai continue the pursuit." },
+  { verse:"2:24-32", place:"Giva of Amma",             heb:"גבעת עמה",          lat:31.850, lng:35.200, color:"#4a7a2a", persons:["Avner","Yoav","Binyamin"],    themes:["Ceasefire","War"],         source:"Abarbanel: Avner's call for a ceasefire was pragmatic — he knew he could not win. Yoav agreed, stopping a war that would have destroyed both houses.", desc:"Avner rallies Binyaminites on a hill and calls for Yoav to stop the fighting. Yoav sounds the shofar. The pursuit ends. Both sides return to base." }
+];
+
+CHAPTERS['shmuel2_3'] = [
+  { verse:"3:1",     place:"Chevron — Long War",       heb:"חברון",            lat:31.532, lng:35.095, color:"#c8962a", persons:["Dovid","Ish-Boshet"],         themes:["War","Kingship"],          source:"Radak: The long war between the houses lasted seven years — Dovid growing stronger, the house of Shaul weaker with each passing year.", desc:"Long war between the house of Dovid and the house of Shaul. Dovid grows continually stronger; the house of Shaul grows weaker." },
+  { verse:"3:6-21",  place:"Chevron — Avner Defects",  heb:"חברון",            lat:31.532, lng:35.096, color:"#c8962a", persons:["Avner","Dovid"],              themes:["Diplomacy","Defection"],   source:"Malbim: Avner's negotiation with Dovid was a calculated transfer of power — he delivered the tribes of Yisrael in exchange for his own survival and honor.", desc:"Avner breaks with Ish-Boshet and negotiates with Dovid. He promises to bring all Yisrael to Dovid. Dovid receives him at Chevron with a feast." },
+  { verse:"3:22-30", place:"Chevron — Avner Killed",   heb:"חברון",            lat:31.532, lng:35.095, color:"#8b1a1a", persons:["Yoav","Avner"],               themes:["Murder","Vengeance"],      source:"Abarbanel: Yoav's murder of Avner — ostensibly for Asahel but really from jealousy of a rival — was an act Dovid explicitly condemned and mourned publicly.", desc:"Yoav lures Avner aside at Chevron's gate and stabs him — avenging his brother Asahel, but also eliminating a rival. Dovid mourns openly and fasts." },
+  { verse:"3:31-39", place:"Chevron — Avner's Burial", heb:"חברון",            lat:31.533, lng:35.095, color:"#2a4a8a", persons:["Dovid","Avner","Yoav"],        themes:["Mourning","Justice"],      source:"Radak: 'A prince and a great man has fallen in Yisrael' — Dovid's elegy for Avner, the general he didn't kill, served to distance himself politically from the murder.", desc:"Dovid leads Avner's funeral at Chevron. He weeps, fasts, and composes a lament. All the people and all Yisrael understand that Dovid did not will this death." }
+];
+
+CHAPTERS['shmuel2_4'] = [
+  { verse:"4:1-4",   place:"Machanayim",               heb:"מחניים",            lat:32.325, lng:35.617, color:"#8b1a1a", persons:["Ish-Boshet","Rechav","Baana"], themes:["Conspiracy","Weakness"],  source:"Radak: When Ish-Boshet heard Avner was dead, his hands went slack — he had no general left. The kingdom of the house of Shaul effectively ended there.", desc:"Ish-Boshet loses courage when he hears Avner is dead. Two brothers, Rechav and Baana, commanders of raiding bands, conspire against him." },
+  { verse:"4:5-8",   place:"Machanayim — Assassination",heb:"מחניים",           lat:32.325, lng:35.618, color:"#8b1a1a", persons:["Rechav","Baana","Ish-Boshet"], themes:["Assassination","Betrayal"],source:"Malbim: They killed him at midday rest — the most vulnerable hour. They brought his head to Dovid expecting reward, as the Amalekite had done before.", desc:"Rechav and Baana kill Ish-Boshet as he sleeps at midday. They cut off his head and bring it to Dovid at Chevron, expecting a reward." },
+  { verse:"4:9-12",  place:"Chevron — Execution",      heb:"חברון",            lat:31.532, lng:35.095, color:"#8b1a1a", persons:["Dovid","Rechav","Baana"],      themes:["Justice","Death"],         source:"Abarbanel: Dovid's second execution of men who killed Shaul's house — consistent, principled, and politically shrewd. He would not benefit from murder.", desc:"Dovid executes Rechav and Baana. He buries Ish-Boshet's head in Avner's grave at Chevron." }
+];
+
+CHAPTERS['shmuel2_5'] = [
+  { verse:"5:1-5",   place:"Chevron — United Kingdom", heb:"חברון",            lat:31.532, lng:35.095, color:"#c8962a", persons:["Dovid","Elders of Yisrael"],   themes:["Kingship","Unity","Covenant"], source:"Radak: After seven years and six months in Chevron, the elders of all twelve tribes came to Dovid. He made a covenant with them — the united monarchy was born.", desc:"All the elders of Yisrael come to Chevron. They cite Dovid's military leadership and Hashem's promise. They anoint him king over all Yisrael. He reigns 33 years from Yerushalayim." },
+  { verse:"5:6-9",   place:"Yerushalayim — Conquest",  heb:"ירושלים",          lat:31.771, lng:35.230, color:"#c8962a", persons:["Dovid","Yevusim"],             themes:["Conquest","Kingship"],     source:"Rashi: The Yevusim said 'even the blind and lame will repel you' — so confident was their fortress. Dovid's capture via the water shaft (tzinnor) was a masterstroke.", desc:"Dovid marches on Yerushalayim. The Yevusites mock him. Dovid captures the fortress of Tzion via the water shaft and calls it the City of Dovid." },
+  { verse:"5:9-12",  place:"Ir Dovid — City of Dovid", heb:"עיר דוד",          lat:31.770, lng:35.232, color:"#c8962a", persons:["Dovid","Chiram of Tzor"],      themes:["Building","Kingship"],     source:"Abarbanel: Chiram's alliance with Dovid — providing cedar and craftsmen — confirmed Dovid's legitimacy in the eyes of the nations surrounding Yisrael.", desc:"Dovid builds the City of Dovid from the Millo inward. Chiram King of Tzor sends cedar wood and carpenters. Dovid knows Hashem has established him as king." },
+  { verse:"5:17-21", place:"Valley of Refaim — First Battle", heb:"עמק רפאים", lat:31.748, lng:35.185, color:"#4a7a2a", persons:["Dovid","Pelishtim"],           themes:["War","Miracle","Victory"], source:"Radak: Dovid asked the oracle before battle — both times receiving divine guidance. The first victory at Baal-Peratzim showed Hashem breaking through like a flood.", desc:"Philistines spread out in the Valley of Refaim. Dovid consults Hashem and attacks at Ba'al Peratzim — a massive rout. 'Hashem broke through my enemies like a breach of water.'" },
+  { verse:"5:22-25", place:"Valley of Refaim — Second Battle", heb:"עמק רפאים",lat:31.747, lng:35.184, color:"#4a7a2a", persons:["Dovid","Pelishtim"],           themes:["War","Miracle","Strategy"],source:"Malbim: The sound in the treetops was the heavenly army advancing — Dovid was to attack only when he heard it, synchronizing earthly and divine forces.", desc:"Philistines return to Refaim. Hashem tells Dovid to circle behind them and wait for the sound of marching in the balsam trees — then attack. He does and routs them." }
+];
+
+CHAPTERS['shmuel2_6'] = [
+  { verse:"6:1-5",   place:"Baalei Yehuda — Kiryat Yearim", heb:"בעלי יהודה",  lat:31.800, lng:35.097, color:"#c8962a", persons:["Dovid","Ark"],                themes:["Ark","Worship","Joy"],     source:"Radak: Kiryat Yearim — called Baalei Yehuda here — was where the Ark had rested for 20 years. Now Dovid comes to bring it home to Yerushalayim.", desc:"Dovid gathers 30,000 men and goes to bring the Ark from Baalei Yehuda. They carry it on a new cart with music and celebration." },
+  { verse:"6:6-11",  place:"Nakhon's Threshing Floor",      heb:"גורן נכון",    lat:31.810, lng:35.120, color:"#8b1a1a", persons:["Uzza","Dovid","Ark"],          themes:["Ark","Death","Fear"],      source:"Abarbanel: Uzza's sin was touching the Ark without authorization — even with good intention. The laws of the Ark demanded strict observance, not improvisation.", desc:"The oxen stumble and Uzza reaches out to steady the Ark. Hashem strikes him dead. Dovid is afraid and angry. The Ark stays at Oved-Edom's house for three months." },
+  { verse:"6:12-15", place:"Route to Yerushalayim — Ark",   heb:"ירושלים",      lat:31.771, lng:35.220, color:"#c8962a", persons:["Dovid","Ark"],                themes:["Ark","Joy","Worship"],     source:"Rashi: Dovid danced with all his might before the Ark — removing his royal garments and dancing like a commoner before Hashem. His joy was complete.", desc:"Hashem blesses Oved-Edom's house. Dovid brings the Ark to Yerushalayim with dancing and sacrifice every six paces. He dances before Hashem with all his might." },
+  { verse:"6:16-23", place:"Yerushalayim — Michal's Rebuke",heb:"ירושלים",      lat:31.771, lng:35.231, color:"#8b1a1a", persons:["Dovid","Michal"],              themes:["Conflict","Worship","Pride"],source:"Malbim: Michal saw Dovid dancing and despised him — she inherited Shaul's pride and could not understand the king who humbled himself before Hashem.", desc:"Michal sees Dovid dancing and despises him. He returns home. She rebukes him for dancing 'like a commoner.' Dovid defends his worship. Michal has no children until her death." }
+];
+
+CHAPTERS['shmuel2_7'] = [
+  { verse:"7:1-3",   place:"Yerushalayim — Dovid's Palace", heb:"ירושלים",      lat:31.771, lng:35.231, color:"#c8962a", persons:["Dovid","Natan"],              themes:["Temple","Building","Plan"],source:"Radak: Dovid's desire to build a house for Hashem while he himself dwelt in cedar was a genuine act of devotion — but Hashem had other plans.", desc:"Dovid, settled in his palace, tells the prophet Natan his desire to build a Temple. Natan initially encourages him." },
+  { verse:"7:4-17",  place:"Yerushalayim — Natan's Prophecy",heb:"ירושלים",     lat:31.771, lng:35.231, color:"#c8962a", persons:["Dovid","Natan","Hashem"],     themes:["Temple","Prophecy","Covenant"],source:"Abarbanel: The Davidic covenant — 'your throne shall be established forever' — is the theological heart of all Jewish messianic expectation.", desc:"That night Hashem tells Natan: Dovid shall not build the Temple — his son will. But Hashem will build Dovid an eternal house. 'Your throne shall be established forever.'" },
+  { verse:"7:18-29", place:"Yerushalayim — Dovid's Prayer", heb:"ירושלים",      lat:31.771, lng:35.230, color:"#c8962a", persons:["Dovid"],                      themes:["Prayer","Covenant","Gratitude"],source:"Malbim: Dovid's prayer before the Ark is a masterpiece of humility — 'Who am I, and what is my house?' — responding to the greatest promise ever made with awe.", desc:"Dovid sits before Hashem and prays — a long prayer of wonder, gratitude, and intercession. 'Who am I, O Lord Hashem, and what is my house?'" }
+];
+
+CHAPTERS['shmuel2_8'] = [
+  { verse:"8:1",     place:"Gat — Philistine Subjugation",  heb:"גת",            lat:31.763, lng:34.853, color:"#4a7a2a", persons:["Dovid","Pelishtim"],           themes:["War","Victory","Empire"],  source:"Radak: Metzeg HaAmah — the bridle of the mother city — means Dovid took control of the Philistines' main stronghold, ending their dominance permanently.", desc:"Dovid defeats the Philistines and takes the bridle of the mother city from their control." },
+  { verse:"8:2",     place:"Moav — Subjugation",            heb:"מואב",           lat:31.200, lng:35.700, color:"#4a7a2a", persons:["Dovid","Moav"],               themes:["War","Victory","Empire"],  source:"Malbim: The measuring line execution — two lines to death, one to life — was a harsh military policy that secured Moav as a tribute-paying vassal state.", desc:"Dovid defeats Moav, measures them with a line — two lines to death, one to life. Moav becomes his servants, bearing tribute." },
+  { verse:"8:3-8",   place:"Tzovat — Euphrates Campaign",   heb:"צובה",           lat:33.500, lng:36.300, color:"#4a7a2a", persons:["Dovid","Hadadezer"],           themes:["War","Victory","Empire"],  source:"Radak: Dovid's campaign to the Euphrates — as far north as any Israelite king ever reached — fulfilled Hashem's promise of the land from the river of Egypt to the great river.", desc:"Dovid defeats Hadadezer of Tzovat at the Euphrates River, capturing 1,700 horsemen and 20,000 foot soldiers. He hamstrings the horses, keeps 100 chariots." },
+  { verse:"8:9-14",  place:"Emeq HaMelach — Edom",          heb:"גיא המלח",      lat:30.800, lng:35.200, color:"#4a7a2a", persons:["Dovid","Avishai","Edom"],      themes:["War","Victory","Empire"],  source:"Malbim: Dovid's empire now stretched from the Euphrates to the Red Sea — the full extent of the promised land, briefly achieved under his reign.", desc:"Avishai son of Tzeruya defeats 18,000 Edomites in the Valley of Salt. Dovid places garrisons throughout Edom. Hashem gives victory wherever Dovid goes." }
+];
+
+CHAPTERS['shmuel2_9'] = [
+  { verse:"9:1-5",   place:"Lo-Devar",                      heb:"לו דבר",         lat:32.400, lng:35.650, color:"#2a4a8a", persons:["Dovid","Mephiboshet","Tziva"], themes:["Loyalty","Covenant","Chesed"], source:"Radak: 'Is there anyone still left of the house of Shaul?' — Dovid's search for Yonatan's descendants fulfills the covenant they swore in the field.", desc:"Dovid asks if anyone remains from Shaul's house to show chesed for Yonatan's sake. He finds Mephiboshet, Yonatan's lame son, hidden in Lo-Devar." },
+  { verse:"9:6-13",  place:"Yerushalayim — Mephiboshet",    heb:"ירושלים",        lat:31.771, lng:35.231, color:"#c8962a", persons:["Dovid","Mephiboshet"],         themes:["Loyalty","Chesed","Covenant"], source:"Abarbanel: 'You shall eat at my table always' — Dovid honors the dead Yonatan through his living son. Mephiboshet eats at the royal table like one of the king's sons.", desc:"Dovid restores all of Shaul's land to Mephiboshet and commands Tziva to work the land for him. Mephiboshet eats at Dovid's table always, lame in both feet." }
+];
+
+CHAPTERS['shmuel2_10'] = [
+  { verse:"10:1-5",  place:"Yericho — Humiliation",         heb:"יריחו",          lat:31.871, lng:35.444, color:"#8b1a1a", persons:["Dovid's Servants","Ammon"],    themes:["Diplomacy","Humiliation"], source:"Radak: The Ammonite king's advisors told him Dovid's envoys were spies — a catastrophic misreading that launched a war that cost them their kingdom.", desc:"Dovid sends envoys to console the new king of Ammon. The Ammonites humiliate them — shaving their beards and cutting their garments. Dovid tells them to wait in Yericho." },
+  { verse:"10:6-14", place:"Rabat Ammon — Battle",          heb:"רבת עמון",       lat:31.955, lng:35.945, color:"#4a7a2a", persons:["Yoav","Avishai","Ammon","Aram"],themes:["War","Victory","Strategy"],source:"Malbim: Yoav's tactical brilliance — dividing his force to face two enemies simultaneously — and his famous charge speech: 'Be strong and let us be strong for our people.'", desc:"The Ammonites hire Aramean mercenaries. Yoav splits his force — faces Aram himself, Avishai faces Ammon. Both enemies flee. A great victory." },
+  { verse:"10:15-19",place:"Chelam — Aram Defeated",        heb:"חלם",             lat:33.000, lng:36.500, color:"#4a7a2a", persons:["Dovid","Shobach","Aram"],       themes:["War","Victory","Empire"],  source:"Radak: After Chelam, all the vassal kings of Aram made peace with Yisrael — Dovid's empire was now secure from the Euphrates to the border of Egypt.", desc:"Aram regroups under Shobach. Dovid musters all Yisrael and defeats them at Chelam. Shobach is killed. All Aramean kings make peace with Dovid." }
+];
+
+CHAPTERS['shmuel2_11'] = [
+  { verse:"11:1",    place:"Rabat Ammon — Siege",           heb:"רבת עמון",       lat:31.955, lng:35.945, color:"#8b1a1a", persons:["Yoav","Ammon"],               themes:["War","Siege"],             source:"Rashi: 'At the turn of the year when kings go out to war' — Dovid stayed in Yerushalayim while his army besieged Ammon. This was the beginning of his downfall.", desc:"In spring — when kings go to war — Dovid sends Yoav to besiege Rabbah of Ammon. Dovid remains in Yerushalayim." },
+  { verse:"11:2-5",  place:"Yerushalayim — Batsheva",       heb:"ירושלים",        lat:31.772, lng:35.231, color:"#8b1a1a", persons:["Dovid","Batsheva"],            themes:["Sin","Batsheva"],          source:"Abarbanel: 'He walked on the roof at evening' — the Sages say Dovid's sin was not purely accidental; his moral vigilance had lapsed while he remained behind from war.", desc:"Dovid sees Batsheva bathing from his roof. He sends for her. She comes. She returns home having conceived." },
+  { verse:"11:6-13", place:"Yerushalayim — Uriya",          heb:"ירושלים",        lat:31.771, lng:35.231, color:"#8b1a1a", persons:["Dovid","Uriya"],               themes:["Sin","Cover-up","Loyalty"],source:"Malbim: Uriya refused to sleep in his house while the Ark was in the field — his loyalty and honor contrasted devastatingly with Dovid's betrayal.", desc:"Dovid recalls Uriya from the front and tries to get him to sleep with Batsheva. Uriya refuses — 'The Ark and Yisrael dwell in tents.' Dovid gets him drunk. Still he doesn't go home." },
+  { verse:"11:14-17",place:"Rabat Ammon — Uriya's Death",   heb:"רבת עמון",       lat:31.955, lng:35.946, color:"#8b1a1a", persons:["Yoav","Uriya","Ammon"],        themes:["Murder","Sin","War"],      source:"Radak: Yoav carried out the order without question — and later used this knowledge as leverage over Dovid, becoming untouchable.", desc:"Dovid sends a letter by Uriya's own hand, ordering Yoav to place him in the fiercest fighting and fall back. Uriya is killed before the walls of Rabbah." },
+  { verse:"11:26-27",place:"Yerushalayim — Marriage",       heb:"ירושלים",        lat:31.771, lng:35.231, color:"#8b1a1a", persons:["Dovid","Batsheva"],            themes:["Sin","Marriage"],          source:"Abarbanel: 'The thing that Dovid had done was evil in the eyes of Hashem' — the closing verdict of the chapter, spoken in understatement about the gravest sin of Dovid's life.", desc:"After Batsheva's mourning, Dovid brings her to his house. She becomes his wife and bears a son. 'The thing Dovid did was evil in the eyes of Hashem.'" }
+];
+
+CHAPTERS['shmuel2_12'] = [
+  { verse:"12:1-9",  place:"Yerushalayim — Natan's Parable",heb:"ירושלים",        lat:31.771, lng:35.231, color:"#8b1a1a", persons:["Natan","Dovid"],               themes:["Prophecy","Rebuke","Sin"], source:"Rashi: Natan's parable of the poor man's lamb was a perfect trap — Dovid condemned himself before the sentence was revealed. 'You are the man.'", desc:"Natan tells Dovid the parable of the rich man who took the poor man's one lamb. Dovid rages. Natan says: 'You are the man.' He recounts Dovid's sins." },
+  { verse:"12:10-14",place:"Yerushalayim — Judgment",       heb:"ירושלים",        lat:31.771, lng:35.231, color:"#8b1a1a", persons:["Natan","Dovid"],               themes:["Judgment","Repentance"],   source:"Abarbanel: 'The sword shall not depart from your house' — the punishment mirrors the crime: hidden sin exposed publicly, private violence repaid with public shame.", desc:"Natan pronounces judgment: the sword will not depart from Dovid's house; his wives will be taken publicly. Dovid says: 'I have sinned against Hashem.' Natan: you shall not die, but the child will." },
+  { verse:"12:15-23",place:"Yerushalayim — Child Dies",     heb:"ירושלים",        lat:31.771, lng:35.231, color:"#8b1a1a", persons:["Dovid","Batsheva"],            themes:["Death","Repentance","Acceptance"],source:"Malbim: Dovid's behavior after the child's death — rising, washing, eating — astonished his servants. His explanation: 'Now he is dead, why should I fast? I will go to him; he will not return to me.'", desc:"The child falls ill. Dovid fasts and lies on the ground for seven days. The child dies. Dovid rises, washes, eats. He comforts Batsheva. She bears Shlomo." },
+  { verse:"12:26-31",place:"Rabat Ammon — Conquest",        heb:"רבת עמון",       lat:31.955, lng:35.945, color:"#4a7a2a", persons:["Yoav","Dovid","Ammon"],        themes:["Victory","War","Empire"],  source:"Radak: Yoav summoned Dovid to take the final credit — a diplomatic gesture showing Yoav's political awareness and his loyalty despite everything.", desc:"Yoav captures the water city of Rabbah and sends for Dovid to take the city himself. Dovid conquers Rabbah, takes the Ammonite crown, and brings enormous spoil." }
+];
+
+
+CHAPTERS['shmuel2_13'] = [
+  { verse:"13:1-6",  place:"Yerushalayim — Amnon's Plot",  heb:"ירושלים",        lat:31.771, lng:35.231, color:"#8b3a3a", persons:["Amnon","Tamar","Yonadav"],    themes:["Sin","Betrayal","Family"],  source:"Abarbanel: Yonadav's counsel was brilliantly evil — he understood Amnon's desire and provided the mechanism. The court enabled the crime.", desc:"Amnon, Dovid's firstborn, becomes obsessed with his half-sister Tamar. His cousin Yonadav advises him to feign illness and ask Dovid to send Tamar to care for him." },
+  { verse:"13:7-14", place:"Amnon's House — Yerushalayim", heb:"בית אמנון",       lat:31.772, lng:35.232, color:"#8b1a1a", persons:["Amnon","Tamar"],              themes:["Sin","Violence","Trauma"],  source:"Radak: Tamar's speech — 'do not do this shameful thing' — is a desperate, rational plea. Amnon does not listen. His love turns immediately to hatred.", desc:"Tamar comes to Amnon's house. He violates her. His love turns to intense hatred. He casts her out. She lives desolate in her brother Avshalom's house." },
+  { verse:"13:19-22",place:"Avshalom's House — Yerushalayim",heb:"בית אבשלום",   lat:31.770, lng:35.230, color:"#8b1a1a", persons:["Avshalom","Tamar","Dovid"],    themes:["Trauma","Silence","Justice"],source:"Malbim: Dovid was very angry but did not punish Amnon because he loved him — he was his firstborn. Avshalom said nothing to Amnon, good or bad, but hated him.", desc:"Avshalom takes Tamar in. Dovid hears and is angry but does nothing. Avshalom says nothing to Amnon — but hates him. He waits two full years." },
+  { verse:"13:23-29",place:"Baal Chatzor — Avshalom's Farm",heb:"בעל חצור",       lat:31.970, lng:35.313, color:"#8b1a1a", persons:["Avshalom","Amnon","Dovid's Sons"],themes:["Murder","Revenge","Family"],source:"Radak: The sheep-shearing feast — a time of celebration and drinking — was the perfect cover for Avshalom's revenge. He waited two years for this moment.", desc:"Avshalom invites all the king's sons to his sheep-shearing at Baal Chatzor. He commands his servants to kill Amnon when he is drunk. Amnon is killed. The others flee." },
+  { verse:"13:34-38",place:"Geshur",                        heb:"גשור",            lat:32.900, lng:35.680, color:"#6a4a8a", persons:["Avshalom"],                   themes:["Exile","Flight","Family"],  source:"Abarbanel: Avshalom fled to his maternal grandfather Talmai in Geshur — the one place he knew Dovid could not reach him politically.", desc:"Avshalom flees to Geshur, his mother's homeland, where his grandfather Talmai is king. He stays there three years. Dovid mourns for Amnon and longs for Avshalom." }
+];
+
+CHAPTERS['shmuel2_14'] = [
+  { verse:"14:1-20", place:"Tekoa",                         heb:"תקוע",            lat:31.628, lng:35.197, color:"#6a4a8a", persons:["Yoav","Wise Woman of Tekoa","Dovid"], themes:["Diplomacy","Wisdom","Family"], source:"Malbim: Yoav's strategy — using a wise woman to tell a parable about her own 'sons' — mirrored Natan's approach with Dovid. Dovid recognized the parable immediately.", desc:"Yoav sends a wise woman from Tekoa with a parable about sons and fraternal killing. Dovid sees through it — Yoav is behind this. He summons Yoav and orders Avshalom recalled." },
+  { verse:"14:21-24",place:"Yerushalayim — Partial Return", heb:"ירושלים",         lat:31.771, lng:35.231, color:"#6a4a8a", persons:["Avshalom","Dovid","Yoav"],    themes:["Reconciliation","Family"],  source:"Radak: Dovid allowed Avshalom to return but refused to see him — a half-reconciliation that pleased no one and left unresolved tensions to fester for two more years.", desc:"Avshalom returns to Yerushalayim but Dovid refuses to see his face. He lives in his own house for two years without seeing the king." },
+  { verse:"14:28-33",place:"Yerushalayim — Reconciliation", heb:"ירושלים",         lat:31.771, lng:35.232, color:"#6a4a8a", persons:["Avshalom","Dovid","Yoav"],    themes:["Reconciliation","Family"],  source:"Abarbanel: Avshalom forced a meeting by burning Yoav's barley field. When Dovid finally kissed him — it was too late. The rebellion was already forming in his heart.", desc:"Avshalom burns Yoav's field to force contact. Yoav arranges a meeting. Dovid kisses Avshalom. But the reconciliation is hollow — the rebellion has already begun." }
+];
+
+CHAPTERS['shmuel2_15'] = [
+  { verse:"15:1-6",  place:"Gate of Yerushalayim",          heb:"שער ירושלים",    lat:31.771, lng:35.229, color:"#6a4a8a", persons:["Avshalom","People"],          themes:["Rebellion","Conspiracy","Seduction"], source:"Radak: 'He rose early and stood by the gate' — Avshalom stole the hearts of Yisrael methodically, over four years, exploiting every grievance.", desc:"Avshalom stands at the city gate for four years, intercepting litigants and telling them their case is good but the king has no deputy to hear them. He steals the hearts of Yisrael." },
+  { verse:"15:7-12", place:"Chevron — Rebellion Declared",  heb:"חברון",           lat:31.532, lng:35.095, color:"#8b1a1a", persons:["Avshalom","Achitophel"],      themes:["Rebellion","Betrayal","Conspiracy"], source:"Malbim: Avshalom's choice of Chevron — where Dovid was first anointed — was deliberate political theater. He sent secret agents throughout Yisrael.", desc:"Avshalom goes to Chevron under pretext of a vow. He sends agents through all Yisrael: 'When you hear the shofar, say Avshalom is king in Chevron!' Achitophel joins him." },
+  { verse:"15:13-23",place:"Yerushalayim — Dovid Flees",    heb:"ירושלים",         lat:31.771, lng:35.231, color:"#6a4a8a", persons:["Dovid","Ittai","Tzadok"],     themes:["Flight","Exile","Loyalty"],  source:"Radak: Dovid left ten concubines to keep the palace and walked barefoot, his head covered, weeping — a deliberate act of mourning and humility.", desc:"A messenger arrives: all Yisrael follows Avshalom. Dovid flees Yerushalayim with his household. He crosses the Kidron brook barefoot, weeping, head covered." },
+  { verse:"15:24-29",place:"Kidron Valley",                 heb:"נחל קדרון",       lat:31.774, lng:35.236, color:"#2a6a4a", persons:["Dovid","Tzadok","Evyatar","Ark"], themes:["Flight","Faith","Ark"],      source:"Abarbanel: Dovid sent the Ark back — a profound act of faith. He would not use God's presence as a political tool. 'If I find favor in His eyes, He will bring me back.'", desc:"Tzadok carries the Ark. Dovid tells him to return it to Yerushalayim: 'If Hashem wills it, He will bring me back. If not — let Him do what is good in His eyes.'" },
+  { verse:"15:30-37",place:"Har HaZeitim — Mount of Olives",heb:"הר הזיתים",       lat:31.778, lng:35.243, color:"#6a4a8a", persons:["Dovid","Chushai","Achitophel"], themes:["Flight","Strategy","Prayer"], source:"Rashi: Dovid's prayer — 'please make Achitophel's counsel foolish' — was answered through Chushai, who appeared at the summit of the Mount of Olives as Dovid prayed.", desc:"Dovid weeps as he climbs the Mount of Olives. He prays that Achitophel's counsel be made foolish. At the summit Chushai appears — Dovid sends him back as a spy." }
+];
+
+CHAPTERS['shmuel2_16'] = [
+  { verse:"16:1-4",  place:"Descent from Har HaZeitim",    heb:"הר הזיתים",       lat:31.776, lng:35.241, color:"#6a4a8a", persons:["Dovid","Tziva","Mephiboshet"], themes:["Flight","Betrayal","Loyalty"], source:"Radak: Tziva's accusation against Mephiboshet — that he hoped to reclaim Shaul's throne — was likely false. Dovid had no time to investigate and made a hasty judgment.", desc:"Tziva meets Dovid with provisions and claims Mephiboshet stayed behind hoping to recover his grandfather's kingdom. Dovid gives Tziva all Mephiboshet's land." },
+  { verse:"16:5-14", place:"Bachurим",                      heb:"בחורים",           lat:31.792, lng:35.265, color:"#8b1a1a", persons:["Dovid","Shimei ben Gera"],    themes:["Cursing","Humility","Flight"],source:"Malbim: Dovid's response to Shimei's cursing — 'let him curse, for Hashem has told him' — is one of the most striking acts of acceptance in Tanach. He walked on in silence.", desc:"Shimei ben Gera of the house of Shaul comes out cursing Dovid and throwing stones. Dovid forbids his men from killing Shimei: 'Let him curse — perhaps Hashem will repay me good.'" },
+  { verse:"16:15-23",place:"Yerushalayim — Avshalom Enters",heb:"ירושלים",          lat:31.771, lng:35.231, color:"#8b1a1a", persons:["Avshalom","Achitophel","Chushai"], themes:["Rebellion","Betrayal","Strategy"], source:"Abarbanel: Achitophel's advice to take Dovid's concubines fulfilled Natan's prophecy — what was done in secret to Uriya would be done publicly to Dovid.", desc:"Avshalom enters Yerushalayim. Chushai pledges loyalty as a spy. Achitophel advises Avshalom to take Dovid's concubines publicly on the roof — to announce an irreversible break." }
+];
+
+CHAPTERS['shmuel2_17'] = [
+  { verse:"17:1-14", place:"Yerushalayim — Battle of Counsel",heb:"ירושלים",        lat:31.771, lng:35.231, color:"#6a4a8a", persons:["Achitophel","Chushai","Avshalom"], themes:["Strategy","Betrayal","Providence"], source:"Radak: Achitophel's plan was brilliant — strike immediately, before Dovid regrouped. Chushai's counter-counsel was deliberately flawed but sounded impressive. Providence worked through the assembly's decision.", desc:"Achitophel advises striking Dovid immediately with 12,000 men. Chushai counters: wait, gather all Yisrael, strike in full force. Avshalom's council prefers Chushai's plan — Hashem has ordained the downfall of Achitophel." },
+  { verse:"17:15-22",place:"Bahurim — Messengers Hidden",   heb:"בחורים",           lat:31.792, lng:35.265, color:"#2a6a4a", persons:["Yonatan","Achimaatz","Dovid"],  themes:["Escape","Loyalty","Providence"],source:"Rashi: The messengers hid in a well — a woman covered it with grain. The soldiers searched Bachurim and found nothing. A narrow escape that turned the war.", desc:"Yonatan and Achimaatz hide in a well in Bachurim to evade Avshalom's men. A woman covers the well with grain. They escape and warn Dovid to cross the Yarden immediately." },
+  { verse:"17:22-26",place:"Machanayim — Dovid's Refuge",   heb:"מחניים",            lat:32.325, lng:35.617, color:"#2a6a4a", persons:["Dovid","Yisrael","Avshalom"],   themes:["Refuge","Flight","War"],     source:"Abarbanel: Machanayim — Dovid's refuge — was the same city where Ish-Boshet had been installed as rival king. A fitting irony of history.", desc:"Dovid crosses the Yarden and reaches Machanayim. Avshalom crosses the Yarden after him with all Yisrael, appointing Amasa over the army." },
+  { verse:"17:27-29",place:"Machanayim — Provisions",       heb:"מחניים",            lat:32.325, lng:35.618, color:"#2a6a4a", persons:["Dovid","Barzilai","Shobi"],     themes:["Loyalty","Chesed","Exile"],  source:"Radak: Barzilai the Gileadite, Shobi of Ammon, and Machir of Lo-Devar all brought lavish provisions — men from unexpected regions who remained loyal to Dovid.", desc:"Barzilai the Gileadite, Shobi son of Nachash from Ammon, and Machir from Lo-Devar bring beds, food, and supplies to Dovid's exhausted people at Machanayim." }
+];
+
+CHAPTERS['shmuel2_18'] = [
+  { verse:"18:1-8",  place:"Forest of Efraim — Battle",    heb:"יער אפרים",        lat:32.200, lng:35.600, color:"#6a4a8a", persons:["Dovid","Yoav","Avshalom","Yisrael"], themes:["War","Victory","Battle"],   source:"Radak: The forest devoured more men than the sword — the terrain itself was Dovid's ally. Twenty thousand fell, more to the wilderness than to battle.", desc:"Battle joins in the Forest of Efraim. Dovid's men rout Yisrael. The forest kills more men than the sword — twenty thousand fall. Dovid's commanders are victorious." },
+  { verse:"18:9-15", place:"Forest of Efraim — Avshalom",  heb:"יער אפרים",        lat:32.200, lng:35.601, color:"#8b1a1a", persons:["Avshalom","Yoav"],               themes:["Death","Rebellion","End"],  source:"Abarbanel: Avshalom's hair — his pride and seduction — became the instrument of his death, caught in the terebinth. Yoav did what Dovid had commanded not to do.", desc:"Avshalom's mule passes under a great terebinth tree — his hair catches in the branches. He hangs there, alive. Yoav thrusts three darts into his heart. He is killed." },
+  { verse:"18:19-33",place:"Machanayim — Dovid Mourns",    heb:"מחניים",            lat:32.325, lng:35.617, color:"#8b1a1a", persons:["Dovid","Avshalom","Achimatz"],   themes:["Mourning","Death","Family"],source:"Malbim: 'My son Avshalom, would that I had died instead of you' — Dovid's lament for Avshalom is more grief than for any other death in Tanach, even Yonatan.", desc:"Two runners race with news. Dovid asks only about Avshalom. He learns his son is dead. He goes to his room weeping: 'My son Avshalom! Would that I had died instead of you!'" }
+];
+
+CHAPTERS['shmuel2_19'] = [
+  { verse:"19:1-9",  place:"Machanayim — Yoav's Rebuke",   heb:"מחניים",            lat:32.325, lng:35.617, color:"#2a6a4a", persons:["Dovid","Yoav"],               themes:["Mourning","Leadership","Rebuke"], source:"Radak: Yoav's rebuke was harsh but necessary — the army was demoralized by Dovid's public grief for their enemy. 'You have shamed all your servants today.'", desc:"Yoav rebukes Dovid: you have shamed your men who saved your life. If Avshalom had lived and all of us died, that would please you. Rise and speak to your servants." },
+  { verse:"19:10-16",place:"Yarden Crossing — Return",      heb:"הירדן",             lat:31.834, lng:35.547, color:"#2a6a4a", persons:["Dovid","Yehuda","Shimei"],     themes:["Return","Reconciliation"],  source:"Abarbanel: Dovid sent specifically to Yehuda to lead the return — his own tribe had been last to come, their loyalty tested by the rebellion.", desc:"Dovid negotiates his return. He sends to Tzadok and Evyatar urging Yehuda to be first to bring him back. Shimei rushes to the Yarden to meet him and beg forgiveness." },
+  { verse:"19:17-24",place:"Yarden — Shimei's Plea",        heb:"הירדן",             lat:31.834, lng:35.546, color:"#2a6a4a", persons:["Dovid","Shimei","Avishai"],    themes:["Forgiveness","Mercy","Return"],source:"Rashi: Dovid swore not to kill Shimei on the day of return — a day of grace. But he told Shlomo to deal with him wisely. The oath was temporal, not permanent.", desc:"Shimei falls before Dovid at the Yarden crossing, pleading forgiveness. Avishai urges execution. Dovid swears not to kill Shimei on this day of return." },
+  { verse:"19:25-31",place:"Yerushalayim — Mephiboshet",    heb:"ירושלים",           lat:31.771, lng:35.231, color:"#2a6a4a", persons:["Dovid","Mephiboshet","Tziva"],  themes:["Loyalty","Justice","Return"],source:"Radak: Mephiboshet had not dressed, trimmed his beard or washed since Dovid left — a sign of genuine mourning, not political calculation. Dovid split the estate.", desc:"Mephiboshet meets Dovid, unkempt since the king's departure. He claims Tziva slandered him. Dovid, uncertain of the truth, splits the land between them." },
+  { verse:"19:32-41",place:"Yarden — Barzilai's Farewell",  heb:"הירדן",             lat:31.834, lng:35.547, color:"#2a6a4a", persons:["Dovid","Barzilai"],            themes:["Loyalty","Chesed","Farewell"],source:"Abarbanel: Barzilai's refusal of the king's offer — 'I am eighty years old, how many years do I have left?' — is one of the most graceful exits in Tanach.", desc:"Barzilai accompanies Dovid to the Yarden. Dovid offers to bring him to Yerushalayim. Barzilai declines — he is 80, past pleasures. He sends his son Chimham instead." }
+];
+
+CHAPTERS['shmuel2_20'] = [
+  { verse:"20:1-2",  place:"Gilgal — Sheva's Revolt",       heb:"גלגל",             lat:31.870, lng:35.444, color:"#4a7a2a", persons:["Sheva ben Bichri","Yisrael"],  themes:["Rebellion","Division"],     source:"Radak: 'We have no portion in Dovid' — Sheva's cry echoed the division that would split the kingdom after Shlomo. The seeds of schism were always present.", desc:"Sheva ben Bichri of Binyamin blows the shofar: 'No portion have we in Dovid!' Yisrael follows Sheva. Yehuda cleaves to Dovid from the Yarden to Yerushalayim." },
+  { verse:"20:3",    place:"Yerushalayim — Concubines",      heb:"ירושלים",          lat:31.771, lng:35.231, color:"#8b1a1a", persons:["Dovid","Concubines"],          themes:["Return","Judgment","Sin"],  source:"Malbim: The ten concubines remained secluded for the rest of their lives — widows of a living man. The consequence of Achitophel's counsel outlasted the rebellion.", desc:"Dovid returns to his palace. He places the ten concubines who had lain with Avshalom in confinement — living as widows until their death. He does not go in to them." },
+  { verse:"20:4-22", place:"Avel Beit Maakha",               heb:"אבל בית מעכה",    lat:33.249, lng:35.573, color:"#4a7a2a", persons:["Yoav","Sheva","Wise Woman"],   themes:["War","Wisdom","Siege"],     source:"Abarbanel: The wise woman of Avel negotiated Sheva's death to save her city — a practical wisdom that resolved a military crisis through diplomacy.", desc:"Yoav pursues Sheva to the northern city of Avel Beit Maakha and besieges it. A wise woman negotiates with Yoav — Sheva's head is thrown over the wall. The pursuit ends." }
+];
+
+CHAPTERS['shmuel2_21'] = [
+  { verse:"21:1-9",  place:"Giva of Shaul — Famine Atonement",heb:"גבעת שאול",      lat:31.852, lng:35.228, color:"#8a7a3a", persons:["Dovid","Givonites","Shaul's Sons"],themes:["Famine","Justice","Atonement"], source:"Radak: A three-year famine prompted Dovid to ask the oracle. The cause: Shaul's killing of the Givonites, violating Yehoshua's oath. The land itself demanded justice.", desc:"Three years of famine. Dovid inquires — it is for Shaul's killing of the Givonites. Dovid hands seven of Shaul's descendants to the Givonites who hang them on a mountain." },
+  { verse:"21:10-14",place:"Yavesh Gilad — Rizpa's Vigil",   heb:"יביש גלעד",        lat:32.456, lng:35.587, color:"#8a7a3a", persons:["Rizpa","Dovid"],               themes:["Mourning","Chesed","Loyalty"],source:"Malbim: Rizpa's vigil — guarding the bodies from birds and beasts from harvest through rain — moved Dovid to give all of Shaul's house proper burial.", desc:"Rizpa daughter of Ayah guards the bodies of Shaul's sons from harvest until rain falls — preventing birds and beasts from touching them. Dovid is moved to bury Shaul and Yonatan properly." },
+  { verse:"21:15-22",place:"Gat — Philistine Giants",         heb:"גת",               lat:31.763, lng:34.853, color:"#4a7a2a", persons:["Dovid","Yisbi-Benov","Avishai","Elhanan"],themes:["War","Giants","Victory"],source:"Radak: Four giant sons of Harapha fell to Dovid's warriors — the last remnant of the giant clans that had terrified the spies and challenged Yisrael for generations.", desc:"Four battles with Philistine giants at Gat. Dovid nearly killed, saved by Avishai. His men swear he will not go to battle again. The last of the Refaim giants are killed." }
+];
+
+CHAPTERS['shmuel2_22'] = [
+  { verse:"22:1",    place:"Yerushalayim — Song of Dovid",   heb:"ירושלים",          lat:31.771, lng:35.231, color:"#5a7a9a", persons:["Dovid"],                      themes:["Prayer","Thanksgiving","Poetry"], source:"Radak: This song appears also as Psalm 18 — composed when Dovid was saved from all his enemies and from Shaul. It is the theological autobiography of his life.", desc:"Dovid sings a great song of thanksgiving to Hashem on the day he was delivered from all his enemies and from the hand of Shaul. The song spans his entire life of warfare and faith." }
+];
+
+CHAPTERS['shmuel2_23'] = [
+  { verse:"23:1-7",  place:"Yerushalayim — Last Words",      heb:"ירושלים",          lat:31.771, lng:35.231, color:"#5a7a9a", persons:["Dovid"],                      themes:["Poetry","Covenant","Kingship"],source:"Abarbanel: 'The sweet singer of Yisrael' — Dovid's last words are a meditation on righteous kingship and the eternal covenant. His final prophecy speaks of a ruler who is like morning light.", desc:"The last words of Dovid — a poetic oracle. 'The spirit of Hashem spoke through me.' He describes the righteous ruler as morning light without clouds, and affirms the eternal covenant." },
+  { verse:"23:8-39", place:"Various Battlefields",           heb:"",                 lat:31.900, lng:35.100, color:"#4a7a2a", persons:["Yisbasham","Eleazar","Shamma","Avishai","Benayahu"], themes:["War","Loyalty","Heroism"], source:"Radak: The list of Dovid's mighty men — Giborim — is the honor roll of those who built the kingdom with their bodies. Each name carries a story.", desc:"The roll of Dovid's mighty men — the Giborim. Yisbasham who killed 800 men at once. Eleazar who fought until his hand cleaved to his sword. Benayahu who killed a lion in a pit on a snowy day." },
+  { verse:"23:13-17",place:"Cave of Adullam — Water from Beit Lechem",heb:"מערת עדולם", lat:31.688, lng:34.975, color:"#2a6a4a", persons:["Dovid","Three Giborim"],     themes:["Loyalty","Chesed","Heroism"],source:"Malbim: Three men broke through a Philistine garrison to bring water from Beit Lechem's well — pure loyalty to their king. Dovid poured it out as an offering to Hashem.", desc:"Dovid at Adullam longs for water from Beit Lechem's well. Three Giborim break through Philistine lines to fetch it. Dovid refuses to drink it — pours it as an offering to Hashem." }
+];
+
+CHAPTERS['shmuel2_24'] = [
+  { verse:"24:1-9",  place:"Census Route — All Yisrael",    heb:"ארץ ישראל",        lat:32.000, lng:35.200, color:"#5a7a9a", persons:["Dovid","Yoav"],               themes:["Sin","Pride","Census"],     source:"Radak: The census was sinful because it reflected pride in military strength rather than trust in Hashem. Yoav sensed this and protested — but Dovid insisted.", desc:"Dovid commands a census of all Yisrael. Yoav objects but obeys. The census takes nine months and twenty days, traversing the entire land. Yoav reports: 800,000 swords in Yisrael, 500,000 in Yehuda." },
+  { verse:"24:10-14",place:"Yerushalayim — Dovid's Remorse", heb:"ירושלים",          lat:31.771, lng:35.231, color:"#8b3a3a", persons:["Dovid","Gad"],                themes:["Repentance","Judgment","Choice"],source:"Abarbanel: Dovid's choice — 'let me fall into the hands of Hashem whose mercies are great, rather than into the hands of man' — reflects his theology of divine mercy.", desc:"Dovid's heart smites him. Gad the prophet offers three punishments: seven years of famine, three months of flight, three days of plague. Dovid chooses plague — better to fall into Hashem's hands." },
+  { verse:"24:15-16",place:"From Dan to Beer Sheva — Plague",heb:"מדן עד באר שבע",   lat:31.240, lng:34.800, color:"#8b1a1a", persons:["Dovid","Malach","Yisrael"],    themes:["Plague","Judgment","Mercy"],source:"Rashi: The angel stretched out his hand over Yerushalayim — and Hashem relented. 'Enough — now stay your hand.' The plague stopped at the threshing floor of Aravna.", desc:"Three days of plague from Dan to Beer Sheva — seventy thousand die. The angel reaches Yerushalayim. Hashem relents: 'Enough.' The plague stops at the threshing floor of Aravna the Yevusite." },
+  { verse:"24:18-25",place:"Goren Aravna — Threshing Floor",heb:"גורן ארונה",        lat:31.778, lng:35.235, color:"#c8962a", persons:["Dovid","Aravna"],              themes:["Altar","Atonement","Temple"],source:"Radak: The threshing floor of Aravna — where the plague stopped — is identified with Har HaMoriya, where Avraham bound Yitzchak and where Shlomo would build the Temple.", desc:"Dovid buys Aravna's threshing floor for fifty silver shekels. He builds a mizbe'ach there. The plague stops. This is the site where Shlomo will build the Temple." }
+];
+
+// ── MODERN ERA DATA 1882–1967 ─────────────────────────────────
+var MODERN_EVENTS = [
+  // ── FIRST ALIYAH 1882–1903 ──
+  { id:'m1',  year:1882, period:'First Aliyah', place:'Rishon LeZion',       heb:'ראשון לציון',    lat:31.964, lng:34.804, desc:'First Aliyah pioneers from Russia establish Rishon LeZion — the first modern Jewish agricultural settlement south of Jaffa. Named for Isaiah 41:27.',        persons:['First Aliyah Pioneers'], source:'Founded July 31, 1882 by ten families from Kharkov. Rothschild support saved the struggling settlement in 1883.' },
+  { id:'m2',  year:1882, period:'First Aliyah', place:'Rosh Pina',           heb:'ראש פינה',       lat:32.969, lng:35.544, desc:'Romanian pioneers establish Rosh Pina in the Galilee, naming it for Psalm 118:22 — "the stone the builders rejected has become the cornerstone."',              persons:['Romanian Pioneers'], source:'Founded 1882. One of the first settlements of the First Aliyah in the north. Sits above the Chula Valley.' },
+  { id:'m3',  year:1882, period:'First Aliyah', place:'Zichron Yaakov',      heb:'זכרון יעקב',     lat:32.570, lng:34.951, desc:'Romanian pioneers settle on Mount Carmel and name the town Zichron Yaakov — in memory of James (Jacob) de Rothschild, whose son Edmond later saved the settlement.',  persons:['Romanian Pioneers','Rothschild'], source:'Founded 1882 on the southern Carmel ridge overlooking the Mediterranean. Baron Rothschild\'s financial support was critical.' },
+  { id:'m4',  year:1878, period:'Pioneers',    place:'Petach Tikva',         heb:'פתח תקווה',      lat:32.087, lng:34.888, desc:'First attempt at modern Jewish agricultural settlement in the Land of Israel, founded by Orthodox Jews from Jerusalem on the site of ancient Gei HaArayot — mentioned in Shoftim.',  persons:['Jerusalem Pioneers'], source:'Founded 1878, abandoned due to malaria, refounded 1882. Called "Mother of the Moshavot." Hosea 2:17: "I will give her the Valley of Achor as a door of hope (petach tikva)."' },
+  { id:'m5',  year:1890, period:'First Aliyah', place:'Rehovot',             heb:'רחובות',         lat:31.894, lng:34.812, desc:'Founded by independent settlers without Rothschild support — named for Bereishit 26:22, when Yitzchak finally found a well without dispute: "Now Hashem has made room for us."',  persons:['Independent Settlers'], source:'Founded 1890. Yitzchak Leib Goldberg led the founders. The independence from Rothschild set it apart from other moshavot.' },
+
+  // ── SECOND ALIYAH 1904–1914 ──
+  { id:'m6',  year:1904, period:'Second Aliyah', place:'Jaffa — Port Arrival', heb:'יפו',           lat:32.051, lng:34.751, desc:'David Ben-Gurion and thousands of Second Aliyah pioneers arrive at Jaffa port fleeing pogroms in Russia and Poland, beginning the labor Zionist transformation of the Yishuv.',  persons:['Ben-Gurion','Second Aliyah Pioneers'], source:'Ben-Gurion arrived 1906. The Second Aliyah (1904–1914) brought ~35,000 pioneers, most from Russia after the Kishinev pogrom and failed 1905 revolution.' },
+  { id:'m7',  year:1909, period:'Second Aliyah', place:'Tel Aviv',            heb:'תל אביב',        lat:32.087, lng:34.789, desc:'66 Jewish families gather on the sand dunes north of Jaffa to hold a lottery for plots of a new Hebrew city — the first modern all-Jewish city in the world. Named Tel Aviv for Herzl\'s novel Altneuland.',  persons:['Meir Dizengoff','Akiva Aryeh Weiss'], source:'April 11, 1909. The famous photograph of families standing in the sand with numbered shells. Tel Aviv means "Hill of Spring" — Ezekiel 3:15.' },
+  { id:'m8',  year:1909, period:'Second Aliyah', place:'Deganya',             heb:'דגניה',          lat:32.707, lng:35.575, desc:'First kibbutz founded at the southern tip of the Kinneret by twelve pioneers — a new form of collective Jewish settlement that would define the Zionist enterprise.',  persons:['Kibbutz Founders'], source:'Founded 1910 (planning began 1909). Sits at the point where the Yarden flows out of the Kinneret — ancient crossroads of the land.' },
+  { id:'m9',  year:1907, period:'Second Aliyah', place:'Hashomer — Kfar Tavor',heb:'כפר תבור',     lat:32.686, lng:35.422, desc:'Hashomer (The Watchman) founded — the first Jewish self-defense organization in modern Palestine, established to protect settlements from attacks. Precursor to the Haganah.',  persons:['Bar-Giora','Hashomer Founders'], source:'Founded 1909 formally. Kfar Tavor (near Har Tavor) was a center of early Hashomer activity in the Lower Galilee.' },
+
+  // ── BRITISH MANDATE 1917–1947 ──
+  { id:'m10', year:1917, period:'British Mandate', place:'Yerushalayim — British Entry', heb:'ירושלים', lat:31.776, lng:35.229, desc:'General Allenby enters Yerushalayim on foot — refusing to ride as a conqueror — on December 11, 1917. 400 years of Ottoman rule ends. The city is taken without a shot.',  persons:['General Allenby'], source:'December 11, 1917. Allenby dismounted at the Jaffa Gate as a deliberate gesture of humility, contrasting with the Kaiser\'s entry in 1898. The Balfour Declaration had been issued one month earlier.' },
+  { id:'m11', year:1920, period:'British Mandate', place:'Tel Chai',           heb:'תל חי',          lat:33.247, lng:35.568, desc:'Tel Chai falls after an Arab attack. Yosef Trumpeldor is mortally wounded defending the northern outpost. His last words — "It is good to die for our country" — become the founding myth of Zionist heroism.',  persons:['Trumpeldor'], source:'March 1, 1920. Tel Chai was an isolated settlement in the Upper Galilee. Trumpeldor\'s death galvanized the Yishuv and led to the founding of the Haganah.' },
+  { id:'m12', year:1921, period:'British Mandate', place:'Haganah — Tel Aviv', heb:'ההגנה',          lat:32.080, lng:34.780, desc:'The Haganah (Defense) founded in Tel Aviv following Arab riots — a clandestine Jewish self-defense organization that would become the core of the IDF.',  persons:['Haganah Founders'], source:'Founded June 1921 after the May Day riots in Jaffa. Operated underground under the British Mandate for 27 years before becoming the IDF in 1948.' },
+  { id:'m13', year:1929, period:'British Mandate', place:'Chevron — Massacre', heb:'חברון',          lat:31.532, lng:35.095, desc:'Arab rioters massacre 67 members of the ancient Jewish community of Chevron on August 24, 1929. The survivors are evacuated. The continuous Jewish presence in Chevron since biblical times is broken.',  persons:['Chevron Jewish Community'], source:'August 23-24, 1929. The Chevron massacre was part of the 1929 Palestine riots triggered by disputes over the Kotel. 435 Jews killed across the country. The Chevron community had existed since the time of Avraham.' },
+  { id:'m14', year:1936, period:'British Mandate', place:'Tower and Stockade — Nir David', heb:'נִיר דָּוִד', lat:32.488, lng:35.432, desc:'The Tower and Stockade (Homa uMigdal) strategy begins — 57 new Jewish settlements established across Palestine in a single year, each built overnight with a watchtower and stockade to create facts on the ground.',  persons:['Jewish Agency','Haganah'], source:'October 1936 – 1939. The strategy was to establish settlements before the British could prohibit them under the proposed partition. Each settlement was built in a single night by hundreds of workers.' },
+  { id:'m15', year:1947, period:'UN Partition',  place:'UN — Partition Plan',  heb:'תוכנית החלוקה', lat:31.700, lng:34.900, desc:'UN Resolution 181 — the Partition Plan — passes on November 29, 1947, dividing Mandatory Palestine into Jewish and Arab states. Jews celebrate in the streets. Arabs reject it.',  persons:['UN General Assembly'], source:'November 29, 1947. Resolution 181 passed 33-13. The Jewish state was to include coastal plain, Galilee, and Negev. Yerushalayim under international administration. Arab states declared war.' },
+
+  // ── WAR OF INDEPENDENCE 1948 ──
+  { id:'m16', year:1948, period:'War of Independence', place:'Tel Aviv — Declaration', heb:'תל אביב',  lat:32.066, lng:34.774, desc:'David Ben-Gurion declares the State of Israel at the Tel Aviv Museum on May 14, 1948 — 11 minutes before the British Mandate expires. The first Jewish state in 2,000 years.',  persons:['Ben-Gurion'], source:'May 14, 1948, 4pm. Ben-Gurion read the Declaration of Independence in 17 minutes. The US recognized Israel 11 minutes later. Five Arab armies invaded the following morning.' },
+  { id:'m17', year:1948, period:'War of Independence', place:'Gush Etzion',     heb:'גוש עציון',     lat:31.651, lng:35.113, desc:'Gush Etzion falls to Jordanian forces and Arab irregulars on May 13, 1948 — one day before the Declaration of Independence. The last defenders are massacred. The bloc will not return to Israel until 1967.',  persons:['Gush Etzion Defenders'], source:'May 13, 1948. The bloc of four kibbutzim south of Yerushalayim had been under siege since the previous winter. 127 defenders killed after surrender.' },
+  { id:'m18', year:1948, period:'War of Independence', place:'Deganya — Syrian Attack', heb:'דגניה',   lat:32.707, lng:35.575, desc:'Syrian tanks reach the gate of Deganya — the first kibbutz. Kibbutz members stop them with Molotov cocktails. The tank at the gate is left as a memorial. The northern front holds.',  persons:['Deganya Defenders','Syrian Army'], source:'May 20, 1948. A Syrian armored column advanced down the eastern shore of the Kinneret. The tank that reached Deganya\'s gate was disabled and remains there today.' },
+  { id:'m19', year:1948, period:'War of Independence', place:'Latrun',          heb:'לטרון',          lat:31.840, lng:34.984, desc:'Three IDF attempts to capture the Latrun fortress guarding the road to besieged Yerushalayim fail with heavy casualties. The Burma Road — an alternate route — is carved through the hills instead.',  persons:['IDF','Mickey Marcus'], source:'May-July 1948. Colonel David "Mickey" Marcus was killed at Latrun the night before the first truce. The Burma Road, built in secret, broke the siege of Yerushalayim.' },
+  { id:'m20', year:1948, period:'War of Independence', place:'Yerushalayim — Siege', heb:'ירושלים',   lat:31.771, lng:35.231, desc:'Yerushalayim under siege for months — food, water and ammunition rationed. The Jewish Quarter of the Old City falls to the Jordanian Legion on May 28. The Kotel passes to Jordanian control.',  persons:['Jewish Quarter Defenders','Jordanian Legion'], source:'The Jewish Quarter\'s last defenders surrendered May 28, 1948 after a week of intense fighting. Rabbi Mordechai Weingarten led the surrender delegation. 78 synagogues subsequently destroyed.' },
+  { id:'m21', year:1948, period:'War of Independence', place:'Eilat — Ink Flag',heb:'אילת',           lat:29.558, lng:34.952, desc:'IDF soldiers reach Eilat on the Red Sea coast on March 10, 1949, raising a hand-drawn ink flag — the War of Independence ends. Israel now stretches from Dan to Eilat.',  persons:['IDF Negev Brigade'], source:'March 10, 1949. The soldiers had no proper flag — they painted one on a sheet with ink. Operation Uvda completed the conquest of the Negev without a battle. The Rhodes Armistice followed.' },
+
+  // ── STATE OF ISRAEL 1948–1966 ──
+  { id:'m22', year:1949, period:'State of Israel', place:'Yerushalayim — Capital', heb:'ירושלים',     lat:31.771, lng:35.229, desc:'Yerushalayim declared capital of the State of Israel. The Knesset and government ministries established in the western part of the divided city. The Old City remains under Jordanian control.',  persons:['Ben-Gurion','Knesset'], source:'December 1949. West Yerushalayim became Israel\'s capital despite US and UN pressure to internationalize the city. The Knesset moved from Tel Aviv in 1949.' },
+  { id:'m23', year:1950, period:'State of Israel', place:'Law of Return — Knesset', heb:'חוק השבות',  lat:31.775, lng:35.198, desc:'The Law of Return enacted — every Jew has the right to immigrate to Israel. Within three years, the Jewish population doubles as survivors of the Holocaust and Jews from Arab countries arrive.',  persons:['Knesset'], source:'July 5, 1950. The Law of Return is the foundational immigration law of Israel. By 1951, over 600,000 immigrants had arrived — doubling the Jewish population.' },
+  { id:'m24', year:1948, period:'State of Israel', place:'Beersheva',           heb:'באר שבע',        lat:31.252, lng:34.791, desc:'Beersheva captured by IDF on October 21, 1948 in Operation Yoav — opening the Negev. The city where Avraham and Yitzchak dug wells and made covenants becomes an Israeli city.',  persons:['IDF','Negev Brigade'], source:'October 21, 1948. The capture of Beersheva fulfilled Ben-Gurion\'s vision of developing the Negev. Avraham\'s well is traditionally identified here — Bereishit 21:31.' },
+
+  // ── SIX DAY WAR 1967 ──
+  { id:'m25', year:1967, period:'Six Day War', place:'Sinai — Air Strike',      heb:'סיני',           lat:30.500, lng:33.500, desc:'June 5, 1967 — 7:45am: Israeli Air Force destroys Egyptian air force on the ground in three hours, achieving total air superiority. The Six Day War begins. The wilderness of the Exodus is the first battlefield.',  persons:['IAF','Motti Hod'], source:'Operation Focus (Moked). 197 aircraft destroyed in the first wave. By end of day 1, Egypt, Jordan and Syria had lost 400 aircraft. Israel had lost 19. The war was decided in the first morning.' },
+  { id:'m26', year:1967, period:'Six Day War', place:'Yerushalayim — Kotel',    heb:'הכותל המערבי',  lat:31.776, lng:35.234, desc:'June 7, 1967 — Israeli paratroopers reach the Western Wall. Rabbi Shlomo Goren blows the shofar. General Mordechai Gur radios: "The Temple Mount is in our hands." The first time Jews can pray at the Kotel since 1948.',  persons:['Motta Gur','Rabbi Goren','55th Paratroop Brigade'], source:'"Har HaBayit BeYadeinu" — June 7, 1967. The paratroopers were mostly secular kibbutzniks. Their tears at the Wall became one of the defining images of the 20th century.' },
+  { id:'m27', year:1967, period:'Six Day War', place:'Chevron — 1967',          heb:'חברון',          lat:31.532, lng:35.096, desc:'June 7, 1967 — Israeli forces enter Chevron without resistance. Jewish soldiers touch the walls of Marat HaMachpela for the first time since 1929. The tomb of Avraham, Yitzchak and Yaakov returns to Jewish access.',  persons:['IDF Paratroopers'], source:'Taken June 7 by the 55th Paratroop Brigade. The local Arab population did not resist. Within a year, Rabbi Moshe Levinger led a Passover Seder at the Park Hotel — the first step of Jewish return to Chevron.' },
+  { id:'m28', year:1967, period:'Six Day War', place:'Shchem — Nablus',         heb:'שכם',            lat:32.220, lng:35.260, desc:'June 7, 1967 — Shchem (Nablus) taken by IDF. The city where Avraham first entered Canaan, where Yaakov bought land, where Yosef was buried — returns to Israeli control for the first time since 1948.',  persons:['IDF'], source:'Avraham\'s first stop in Canaan was Shechem — Bereishit 12:6. Yaakov bought the field there — Bereishit 33:19. Yosef\'s bones are buried there — Yehoshua 24:32.' },
+  { id:'m29', year:1967, period:'Six Day War', place:'Yericho — 1967',          heb:'יריחו',           lat:31.871, lng:35.444, desc:'June 7, 1967 — Yericho captured without resistance. The first city conquered by Yehoshua 3,200 years earlier falls again to Israeli forces within hours of the campaign beginning.',  persons:['IDF'], source:'Yehoshua 6 — the walls fell to shofar blasts. In 1967, the city fell without a shot. King Hussein had ordered Jordanian forces to withdraw westward.' },
+  { id:'m30', year:1967, period:'Six Day War', place:'Golan Heights',           heb:'רמת הגולן',      lat:32.900, lng:35.750, desc:'June 9-10, 1967 — Israel captures the Golan Heights from Syria in a two-day assault up fortified escarpments. The ancient Bashan, where Og\'s kingdom stood, becomes Israeli-controlled territory.',  persons:['IDF Northern Command','David Elazar'], source:'The Golan assault was the most costly of the war — heavily fortified Syrian positions on steep terrain. 115 Israeli soldiers killed in two days. The ancient road from the Galilee to Damascus passed through here.' },
+  { id:'m31', year:1967, period:'Six Day War', place:'Gaza — 1967',             heb:'עזה',             lat:31.507, lng:34.467, desc:'June 5-6, 1967 — Gaza Strip captured by IDF. Ancient territory of the Pelishtim, home of Shimshon\'s battles and death, the city where Avimelechs ruled — passes from Egyptian to Israeli control.',  persons:['IDF Southern Command'], source:'Shimshon\'s territory — Shoftim 13-16. The Gaza Strip had been under Egyptian administration since 1948. The ancient city of Aza appears dozens of times in Tanach.' },
+  { id:'m32', year:1967, period:'Six Day War', place:'Sinai — Suez Canal',      heb:'תעלת סואץ',      lat:30.600, lng:32.350, desc:'June 8, 1967 — IDF reaches the Suez Canal. Israel now controls the entire Sinai Peninsula — the wilderness through which the Exodus travelled, from the Reed Sea to Kadesh Barnea.',  persons:['IDF Southern Command','Ariel Sharon'], source:'The Sinai campaign was completed in four days. 100 miles of wilderness traversed. Israel controlled 3x its pre-war territory. The Exodus route — through this very desert — is referenced throughout Tanach.' }
+];
+
+
+// ── MODERN ERA STATE & FUNCTIONS ─────────────────────────────
+var showModern = false;
+var modernMarkers = [];
+var modernCluster = null;
+var activeModernId = null;
+
+var MODERN_COLORS = {
+  'Pioneers':           '#4a7a5a',
+  'First Aliyah':       '#5a8a6a',
+  'Second Aliyah':      '#3a7a8a',
+  'British Mandate':    '#5a6a8a',
+  'UN Partition':       '#7a6a9a',
+  'War of Independence':'#8a4a3a',
+  'State of Israel':    '#3a6a7a',
+  'Six Day War':        '#2a5a8a'
+};
+
+function getModernColor(period) { return MODERN_COLORS[period] || '#4a6a8a'; }
+
+function toggleModernEra() {
+  showModern = !showModern;
+  document.getElementById('era-modern-btn').className = 'pill-btn' + (showModern ? ' era-on' : '');
+  if (showModern) renderModernOverlay();
+  else clearModernOverlay();
+  updateLegend();
+}
+
+function clearModernOverlay() {
+  if (modernCluster) { map.removeLayer(modernCluster); modernCluster = null; }
+  modernMarkers.forEach(function(m) { if (map.hasLayer(m)) map.removeLayer(m); });
+  modernMarkers = [];
+  document.querySelectorAll('.modern-item').forEach(function(el) { el.remove(); });
+  var mhdr = document.getElementById('modern-sidebar-hdr');
+  if (mhdr) mhdr.remove();
+  activeModernId = null;
+}
+
+function renderModernOverlay() {
+  clearModernOverlay();
+  modernCluster = L.markerClusterGroup({
+    maxClusterRadius: 35, showCoverageOnHover: false,
+    iconCreateFunction: function(cluster) {
+      return L.divIcon({
+        html: '<div style="background:rgba(20,40,70,0.92);border:2px solid #6a9aba;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-size:10px;font-weight:bold;color:#a8d0e8;box-shadow:0 2px 8px rgba(0,0,0,0.5);">' + cluster.getChildCount() + '</div>',
+        className:'', iconSize:[30,30], iconAnchor:[15,15]
+      });
+    }
+  });
+  MODERN_EVENTS.forEach(function(ev) {
+    var color = getModernColor(ev.period);
+    var m = L.circleMarker([ev.lat, ev.lng], { radius:7, color:'#c8e0f0', weight:1.5, fillColor:color, fillOpacity:0.9 });
+    m.bindPopup(
+      '<div class="pop-era">' + ev.period + ' · ' + ev.year + '</div>' +
+      '<div class="pop-place">' + ev.place + (ev.heb ? ' · ' + ev.heb : '') + '</div>' +
+      '<div class="pop-desc">' + ev.desc + '</div>'
+    );
+    m.on('click', function() { selectModernEvent(ev.id); });
+    modernMarkers.push(m);
+    modernCluster.addLayer(m);
+  });
+  map.addLayer(modernCluster);
+  addModernToSidebar();
+}
+
+function addModernToSidebar() {
+  var list = document.getElementById('event-list');
+  var hdr = document.createElement('div');
+  hdr.id = 'modern-sidebar-hdr';
+  hdr.className = 'modern-item';
+  hdr.style.cssText = 'background:#0f1a2a;padding:8px 14px;border-bottom:1px solid rgba(106,154,186,0.3);border-top:2px solid #3a6a9a;';
+  hdr.innerHTML = '<div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:#4a7a9a;">Modern Era · 1882–1967</div><div style="font-size:9px;color:#2a4a5a;margin-top:2px;">' + MODERN_EVENTS.length + ' events</div>';
+  list.appendChild(hdr);
+
+  var periods = []; var byPeriod = {};
+  MODERN_EVENTS.forEach(function(ev) {
+    if (periods.indexOf(ev.period) < 0) periods.push(ev.period);
+    if (!byPeriod[ev.period]) byPeriod[ev.period] = [];
+    byPeriod[ev.period].push(ev);
+  });
+
+  periods.forEach(function(period) {
+    var evs = byPeriod[period];
+    var color = getModernColor(period);
+    var grpHdr = document.createElement('div');
+    grpHdr.className = 'modern-item ch-group-hdr';
+    grpHdr.style.borderLeft = '3px solid ' + color;
+    grpHdr.innerHTML = '<span class="ch-group-hdr-title">' + period + '</span><span class="ch-group-hdr-meta">' + evs.length + ' events</span><span class="ch-group-hdr-arrow">▶</span>';
+    var grpBody = document.createElement('div');
+    grpBody.className = 'modern-item ch-group-body';
+    grpHdr.onclick = function() { grpHdr.classList.toggle('open'); };
+
+    evs.forEach(function(ev) {
+      var nearby = findNearbyModern(ev.lat, ev.lng);
+      var d = document.createElement('div');
+      d.className = 'ev-item modern-item';
+      d.id = 'item-' + ev.id;
+      var nearbyTanach = findNearbyTanachForModern(ev.lat, ev.lng);
+      var tabHTML = '';
+      if (nearbyTanach.length > 0) {
+        tabHTML = '<div class="pat-toggle"><button class="pat-tab active" id="tab-ev-' + ev.id + '" onclick="switchTab(\'' + ev.id + '\',\'ev\')">This Event</button><button class="pat-tab" id="tab-place-' + ev.id + '" onclick="switchTab(\'' + ev.id + '\',\'place\')">In Tanach (' + nearbyTanach.length + ')</button></div>';
+      }
+      var tanachRows = nearbyTanach.map(function(ne) {
+        return '<div class="pat-event" onclick="jumpToPlace(' + ne.chapterNum + ',' + ne.eventId + ')">' +
+          '<div class="pat-ch"><span class="pat-ch-dot" style="background:' + ne.color + '"></span>' + ne.book + ' Ch ' + ne.chapterNum + ' · ' + ne.verse + '</div>' +
+          '<div class="pat-place">' + ne.place + '</div>' +
+          '<div class="pat-d">' + ne.desc.substring(0,80) + '…</div></div>';
+      }).join('');
+      d.innerHTML =
+        '<div class="ev-summary"><div class="ev-v">' + ev.year + ' · ' + ev.period + '</div>' +
+        '<div class="ev-p">' + ev.place + (ev.heb ? ' <span class="ev-ph">' + ev.heb + '</span>' : '') + '</div>' +
+        '<div class="ev-who" style="color:#4a7a9a;">' + (ev.persons||[]).join(', ') + '</div></div>' +
+        '<div class="ev-detail">' + tabHTML +
+          '<div class="pat-panel active" id="panel-ev-' + ev.id + '"><div class="ev-desc-text">' + ev.desc + '</div>' +
+          (ev.source ? '<div class="ev-source-text">' + ev.source + '</div>' : '') + '</div>' +
+          '<div class="pat-panel" id="panel-place-' + ev.id + '">' + (tanachRows || '<div class="pat-none">No Tanach events within 1km.</div>') + '</div>' +
+        '</div>';
+      d.querySelector('.ev-summary').onclick = function() {
+        if (activeModernId === ev.id) deselectModernEvent();
+        else selectModernEvent(ev.id);
+      };
+      grpBody.appendChild(d);
+    });
+    list.appendChild(grpHdr);
+    list.appendChild(grpBody);
+  });
+}
+
+function findNearbyTanachForModern(lat, lng) {
+  var results = [];
+  ['shmuel1','shmuel2'].forEach(function(bookKey) {
+    BOOKS[bookKey].chapters.forEach(function(ch) {
+      var key = ch.key || (bookKey + '_' + ch.num);
+      var data = CHAPTERS[key];
+      if (!data) return;
+      data.forEach(function(ev, i) {
+        if (haversineKm(lat, lng, ev.lat, ev.lng) <= PROXIMITY_KM) {
+          results.push({
+            book: bookKey === 'shmuel1' ? 'Shmuel I' : 'Shmuel II',
+            chapterNum: ch.num, verse: ev.verse, place: ev.place,
+            desc: ev.desc, eventId: ch.num * 100 + i + 1,
+            color: (bookKey === 'shmuel2' ? CHAPTER_COLORS_S2 : CHAPTER_COLORS)[ch.num] || '#8a7a5a'
+          });
+        }
+      });
+    });
+  });
+  return results.sort(function(a,b) { return a.chapterNum - b.chapterNum; });
+}
+
+function findNearbyModern(lat, lng) {
+  if (!showModern) return [];
+  return MODERN_EVENTS.filter(function(ev) {
+    return haversineKm(lat, lng, ev.lat, ev.lng) <= PROXIMITY_KM;
+  }).sort(function(a,b) { return a.year - b.year; });
+}
+
+function selectModernEvent(id) {
+  if (activeModernId !== null) {
+    var pi = document.getElementById('item-' + activeModernId);
+    if (pi) pi.classList.remove('active');
+  }
+  // Also deselect any tanach event
+  if (activeId !== null) deselectEvent();
+  activeModernId = id;
+  var item = document.getElementById('item-' + id);
+  if (item) {
+    item.classList.add('active');
+    item.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    openDrawerIfMobile();
+  }
+  var ev = MODERN_EVENTS.find(function(e) { return e.id === id; });
+  if (ev) map.flyTo([ev.lat, ev.lng], 13, { duration:1.1 });
+}
+
+function deselectModernEvent() {
+  if (activeModernId === null) return;
+  var item = document.getElementById('item-' + activeModernId);
+  if (item) item.classList.remove('active');
+  activeModernId = null;
+}
+
+// Update findNearby to also include modern events in the Tanach place panel
+var _origFindNearby = null; // patched below after definitions
+
+var CHAPTER_COLORS = {
+  1:'#5a7a9a', 2:'#5a7a9a', 3:'#5a7a9a', 4:'#8b3a3a', 5:'#8b3a3a',
+  6:'#6a8a5a', 7:'#6a8a5a', 8:'#8a7a3a', 9:'#8a7a3a', 10:'#c8962a',
+  11:'#c8962a', 12:'#6a8a5a', 13:'#8b3a3a', 14:'#c8962a', 15:'#8b3a3a',
+  16:'#2a6a4a', 17:'#2a6a4a', 18:'#8b3a3a', 19:'#8b3a3a', 20:'#2a4a8a',
+  21:'#6a4a8a', 22:'#6a4a8a', 23:'#6a4a8a', 24:'#2a6a4a', 25:'#2a6a4a',
+  26:'#2a6a4a', 27:'#8a5a2a', 28:'#8b3a3a', 29:'#2a6a4a', 30:'#2a6a4a',
+  31:'#8b1a1a'
+};
+// Shmuel II arc colors
+var CHAPTER_COLORS_S2 = {
+  1:'#2a4a8a', 2:'#c8962a', 3:'#8b3a3a',  4:'#8b3a3a',  5:'#c8962a',
+  6:'#c8962a', 7:'#c8962a', 8:'#4a7a2a',  9:'#2a6a4a',  10:'#4a7a2a',
+  11:'#8b1a1a',12:'#8b3a3a',13:'#8b3a3a', 14:'#8b3a3a', 15:'#6a4a8a',
+  16:'#6a4a8a',17:'#6a4a8a',18:'#6a4a8a', 19:'#2a6a4a', 20:'#4a7a2a',
+  21:'#4a7a2a',22:'#4a7a2a',23:'#8a7a3a', 24:'#5a7a9a'
+};
+
+// ── STATE ────────────────────────────────────────────────────
+var currentMode    = 'chapter';
+var currentBook    = 'shmuel1';
+var currentChapter = 17;
+var activeId       = null;
+var events         = [];
+var leafletMarkers = {};
+var pathLine       = null;
+var clusterGroup   = null;
+var bookFilterPerson = '';
+var bookFilterTheme  = '';
+var bookFilterMaxCh  = 31;
+
+// ── MAP ──────────────────────────────────────────────────────
+var map = L.map('map', { zoomControl: true }).setView([31.71, 34.98], 11);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19, attribution: '© CartoDB'
+}).addTo(map);
+
+// ── HELPERS ──────────────────────────────────────────────────
+function hebrewNumeral(n) {
+  var nums = ['','א','ב','ג','ד','ה','ו','ז','ח','ט','י',
+    'יא','יב','יג','יד','טו','טז','יז','יח','יט','כ',
+    'כא','כב','כג','כד','כה','כו','כז','כח','כט','ל','לא'];
+  return nums[n] || String(n);
+}
+
+function haversineKm(la1, lo1, la2, lo2) {
+  var R = 6371, dL = (la2-la1)*Math.PI/180, dO = (lo2-lo1)*Math.PI/180;
+  var a = Math.sin(dL/2)*Math.sin(dL/2) +
+          Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dO/2)*Math.sin(dO/2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ── CHAPTER DROPDOWN ─────────────────────────────────────────
+function buildChapterDropdown(bookKey) {
+  var sel = document.getElementById('ch-sel');
+  sel.innerHTML = '';
+  BOOKS[bookKey].chapters.forEach(function(ch) {
+    var o = document.createElement('option');
+    o.value = ch.num; o.textContent = ch.label;
+    sel.appendChild(o);
+  });
+}
+
+function onBookChange() {
+  var bk = document.getElementById('book-sel').value;
+  currentBook = bk;
+  buildChapterDropdown(bk);
+  var first = BOOKS[bk].chapters[0];
+  if (first) loadChapter(bk, first.num);
+}
+
+function onChapterChange() {
+  loadChapter(currentBook, parseInt(document.getElementById('ch-sel').value));
+}
+
+// ── LOAD CHAPTER ─────────────────────────────────────────────
+function loadChapter(bookKey, chNum) {
+  var key = bookKey + '_' + chNum;
+  var data = CHAPTERS[key];
+  if (!data) { alert('Chapter ' + chNum + ' not yet available.'); return; }
+  currentBook = bookKey; currentChapter = chNum;
+  events = data.map(function(ev, i) {
+    var c = JSON.parse(JSON.stringify(ev));
+    c.id = i + 1;
+    if (!c.color) c.color = (bookKey === 'shmuel2' ? CHAPTER_COLORS_S2 : CHAPTER_COLORS)[chNum] || '#8a7a5a';
+    return c;
+  });
+  activeId = null;
+  renderSidebarChapter();
+  renderMapChapter();
+  updateHeader();
+  updateLegend();
+  document.getElementById('ch-sel').value    = chNum;
+  document.getElementById('book-sel').value  = bookKey;
+  var lls = events.map(function(e) { return [e.lat, e.lng]; });
+  if (lls.length) map.fitBounds(L.latLngBounds(lls), { padding: [50,50], maxZoom: 13 });
+}
+
+// ── RENDER SIDEBAR — CHAPTER ──────────────────────────────────
+function renderSidebarChapter() {
+  document.getElementById('sb-ch-hdr').style.display = 'block';
+  document.getElementById('sb-book-ctrl').classList.remove('on');
+  var book = BOOKS[currentBook];
+  var chObj = book.chapters.find(function(c) { return c.num === currentChapter; });
+  document.getElementById('sb-ch-title').textContent = chObj ? chObj.label : 'Chapter ' + currentChapter;
+  document.getElementById('sb-ch-count').textContent = events.length + ' events';
+  var list = document.getElementById('event-list');
+  list.innerHTML = '';
+  events.forEach(function(ev) {
+    list.appendChild(makeEventItem(ev, false));
+  });
+}
+
+function makeEventItem(ev, isBookMode) {
+  var nearby = findNearby(ev.lat, ev.lng, ev.id);
+  var nearbyMod = findNearbyModern(ev.lat, ev.lng);
+  var totalNearby = nearby.length + nearbyMod.length;
+  var d = document.createElement('div');
+  d.className = 'ev-item';
+  d.id = 'item-' + ev.id;
+  // Summary row
+  var sum = document.createElement('div');
+  sum.className = 'ev-summary';
+  sum.innerHTML =
+    '<div class="ev-v">' + (isBookMode ? 'Ch ' + ev.chapterNum + ' · ' : '') + ev.verse + '</div>' +
+    '<div class="ev-p">' + ev.place +
+      (ev.heb ? ' <span class="ev-ph">' + ev.heb + '</span>' : '') + '</div>' +
+    '<div class="ev-who">' + (ev.persons || []).join(', ') + '</div>';
+  sum.onclick = function() {
+    if (activeId === ev.id) { deselectEvent(); } else { selectEvent(ev.id); }
+  };
+  // Detail (hidden until active)
+  var det = document.createElement('div');
+  det.className = 'ev-detail';
+  // Tabs: show place tab if nearby tanach OR modern events
+  var tabHTML = '';
+  if (totalNearby > 1 || nearbyMod.length > 0) {
+    var placeCount = (nearby.length > 1 ? nearby.length - 1 : 0) + nearbyMod.length;
+    var placeLabel = placeCount > 0 ? 'This Place (' + (nearby.length + nearbyMod.length) + ')' : 'This Place';
+    tabHTML =
+      '<div class="pat-toggle">' +
+        '<button class="pat-tab active" id="tab-ev-' + ev.id + '" onclick="switchTab(' + ev.id + ',\'ev\')">This Event</button>' +
+        '<button class="pat-tab" id="tab-place-' + ev.id + '" onclick="switchTab(' + ev.id + ',\'place\')">' + placeLabel + '</button>' +
+      '</div>';
+  }
+  var evPanel =
+    '<div class="pat-panel active" id="panel-ev-' + ev.id + '">' +
+      '<div class="ev-desc-text">' + ev.desc + '</div>' +
+      (ev.source ? '<div class="ev-source-text">' + ev.source + '</div>' : '') +
+    '</div>';
+  var placeRows = nearby.map(function(ne) {
+    var isCurrent = (ne.eventId === ev.id || (ne.chapterNum === (ev.chapterNum || currentChapter) && ne.verse === ev.verse));
+    return '<div class="pat-event' + (isCurrent ? ' current' : '') + '" onclick="' +
+      (isCurrent ? '' : 'jumpToPlace(' + ne.chapterNum + ',' + ne.eventId + ')') + '">' +
+      '<div class="pat-ch">' +
+        '<span class="pat-ch-dot" style="background:' + (CHAPTER_COLORS[ne.chapterNum] || '#8a7a5a') + '"></span>' +
+        'Ch ' + ne.chapterNum + ' · ' + ne.verse +
+      '</div>' +
+      '<div class="pat-place">' + ne.place + '</div>' +
+      '<div class="pat-d">' + ne.desc.substring(0, 90) + '…</div>' +
+    '</div>';
+  }).join('');
+  // Add modern rows if era is on
+  var modernRows = nearbyMod.map(function(me) {
+    return '<div class="pat-event" onclick="selectModernEvent(\'' + me.id + '\')" style="border-left:2px solid ' + getModernColor(me.period) + ';padding-left:8px;">' +
+      '<div class="pat-ch" style="color:#4a7a9a;"><span class="pat-ch-dot" style="background:' + getModernColor(me.period) + '"></span>' + me.year + ' · ' + me.period + '</div>' +
+      '<div class="pat-place">' + me.place + '</div>' +
+      '<div class="pat-d">' + me.desc.substring(0,90) + '…</div>' +
+    '</div>';
+  }).join('');
+  var allRows = placeRows + modernRows;
+  var placePanel =
+    '<div class="pat-panel" id="panel-place-' + ev.id + '">' +
+      (allRows ? allRows : '<div class="pat-none">No other events found nearby.</div>') +
+    '</div>';
+  det.innerHTML = tabHTML + evPanel + placePanel;
+  d.appendChild(sum);
+  d.appendChild(det);
+  return d;
+}
+
+function switchTab(evId, tab) {
+  document.getElementById('tab-ev-' + evId).className    = 'pat-tab' + (tab === 'ev'    ? ' active' : '');
+  document.getElementById('tab-place-' + evId).className = 'pat-tab' + (tab === 'place' ? ' active' : '');
+  document.getElementById('panel-ev-' + evId).className    = 'pat-panel' + (tab === 'ev'    ? ' active' : '');
+  document.getElementById('panel-place-' + evId).className = 'pat-panel' + (tab === 'place' ? ' active' : '');
+}
+
+function jumpToPlace(chNum, evId) {
+  if (chNum === currentChapter && currentMode === 'chapter') {
+    selectEvent(evId);
+  } else {
+    loadChapter(currentBook, chNum);
+    // selectEvent after render
+    setTimeout(function() { selectEvent(evId); }, 100);
+  }
+}
+
+// ── RENDER SIDEBAR — BOOK ─────────────────────────────────────
+function renderSidebarBook() {
+  document.getElementById('sb-ch-hdr').style.display = 'none';
+  document.getElementById('sb-book-ctrl').classList.add('on');
+  // Populate person dropdown
+  var allP = [];
+  events.forEach(function(ev) {
+    (ev.persons || []).forEach(function(p) { if (allP.indexOf(p) < 0) allP.push(p); });
+  });
+  var pSel = document.getElementById('bc-person');
+  while (pSel.options.length > 1) pSel.remove(1);
+  allP.sort().forEach(function(p) {
+    var o = document.createElement('option'); o.value = p; o.textContent = p; pSel.appendChild(o);
+  });
+  buildBookList();
+}
+
+function buildBookList() {
+  var list = document.getElementById('event-list');
+  list.innerHTML = '';
+  var book = BOOKS[currentBook];
+  var visible = 0;
+  book.chapters.forEach(function(ch) {
+    var chEvs = events.filter(function(e) { return e.chapterNum === ch.num && bookEventVisible(e); });
+    if (!chEvs.length) return;
+    visible += chEvs.length;
+    var group = document.createElement('div');
+    group.className = 'ch-group';
+    var hdr = document.createElement('div');
+    hdr.className = 'ch-group-hdr';
+    hdr.innerHTML =
+      '<span class="ch-group-hdr-title" style="border-left:3px solid ' + (CHAPTER_COLORS[ch.num] || '#8a7a5a') + ';padding-left:7px;">' + ch.label + '</span>' +
+      '<span class="ch-group-hdr-meta">' + chEvs.length + ' events</span>' +
+      '<span class="ch-group-hdr-arrow">▶</span>';
+    hdr.onclick = function() { hdr.classList.toggle('open'); };
+    var body = document.createElement('div');
+    body.className = 'ch-group-body';
+    chEvs.forEach(function(ev) { body.appendChild(makeEventItem(ev, true)); });
+    group.appendChild(hdr); group.appendChild(body);
+    list.appendChild(group);
+  });
+  document.getElementById('bc-count').textContent = visible + ' of ' + events.length + ' events shown';
+  document.getElementById('ev-badge').textContent = visible + ' events';
+}
+
+function bookEventVisible(ev) {
+  if (bookFilterPerson && (ev.persons || []).indexOf(bookFilterPerson) < 0) return false;
+  if (bookFilterTheme  && (ev.themes  || []).indexOf(bookFilterTheme)  < 0) return false;
+  if (ev.chapterNum > bookFilterMaxCh) return false;
+  return true;
+}
+
+function applyBookFilters() {
+  bookFilterPerson = document.getElementById('bc-person').value;
+  bookFilterTheme  = document.getElementById('bc-theme').value;
+  buildBookList();
+  applyBookMarkerVisibility();
+}
+
+function onRangeInput(el) {
+  bookFilterMaxCh = parseInt(el.value);
+  var pct = ((bookFilterMaxCh - 1) / 30 * 100).toFixed(1);
+  el.style.setProperty('--pct', pct + '%');
+  document.getElementById('range-disp').textContent = bookFilterMaxCh;
+  document.getElementById('range-end').textContent  = bookFilterMaxCh;
+  buildBookList();
+  applyBookMarkerVisibility();
+}
+
+function applyBookMarkerVisibility() {
+  events.forEach(function(ev) {
+    var show = bookEventVisible(ev);
+    var m = leafletMarkers[ev.id];
+    if (!m) return;
+    if (clusterGroup) {
+      if (show) { if (!clusterGroup.hasLayer(m)) clusterGroup.addLayer(m); }
+      else      { if (clusterGroup.hasLayer(m))  clusterGroup.removeLayer(m); }
+    }
+  });
+}
+
+// ── RENDER MAP — CHAPTER ──────────────────────────────────────
+function renderMapChapter() {
+  clearMap();
+  var lls = events.map(function(e) { return [e.lat, e.lng]; });
+  pathLine = L.polyline(lls, { color:'#8a6a00', weight:1.5, dashArray:'4,7', opacity:0.5 }).addTo(map);
+  events.forEach(function(ev) {
+    var m = L.circleMarker([ev.lat, ev.lng], {
+      radius: 8, color: '#f5eed8', weight: 2, fillColor: ev.color, fillOpacity: 1
+    }).addTo(map);
+    m.bindPopup(
+      '<div class="pop-place">' + ev.place + (ev.heb ? ' · ' + ev.heb : '') + '</div>' +
+      '<div class="pop-verse">' + ev.verse + ' · ' + (ev.persons||[]).join(', ') + '</div>' +
+      '<div class="pop-desc">' + ev.desc + '</div>'
+    );
+    m.on('click', function() { selectEvent(ev.id); });
+    leafletMarkers[ev.id] = m;
+  });
+}
+
+// ── RENDER MAP — BOOK ─────────────────────────────────────────
+function renderMapBook() {
+  clearMap();
+  clusterGroup = L.markerClusterGroup({
+    maxClusterRadius: 40, showCoverageOnHover: false,
+    iconCreateFunction: function(cluster) {
+      return L.divIcon({
+        html: '<div style="background:rgba(12,9,3,0.9);border:2px solid #c8962a;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-family:Georgia,serif;font-size:11px;font-weight:bold;color:#e8c76a;box-shadow:0 2px 8px rgba(0,0,0,0.5);">' + cluster.getChildCount() + '</div>',
+        className: '', iconSize: [32,32], iconAnchor: [16,16]
+      });
+    }
+  });
+  events.forEach(function(ev) {
+    var m = L.circleMarker([ev.lat, ev.lng], {
+      radius: 7, color: '#f5eed8', weight: 1.5, fillColor: ev.color, fillOpacity: 0.9
+    });
+    m.bindPopup(
+      '<div class="pop-place">' + ev.place + '</div>' +
+      '<div class="pop-verse">Ch.' + ev.chapterNum + ' · ' + ev.verse + '</div>' +
+      '<div class="pop-desc">' + ev.desc + '</div>'
+    );
+    m.on('click', function() { selectEvent(ev.id); });
+    leafletMarkers[ev.id] = m;
+    clusterGroup.addLayer(m);
+  });
+  map.addLayer(clusterGroup);
+}
+
+function clearMap() {
+  if (clusterGroup) { map.removeLayer(clusterGroup); clusterGroup = null; }
+  Object.keys(leafletMarkers).forEach(function(k) { map.removeLayer(leafletMarkers[k]); });
+  leafletMarkers = {};
+  if (pathLine) { map.removeLayer(pathLine); pathLine = null; }
+}
+
+// ── DESELECT ─────────────────────────────────────────────────
+function deselectEvent() {
+  if (activeId === null) return;
+  var item = document.getElementById('item-' + activeId);
+  if (item) item.classList.remove('active');
+  var m = leafletMarkers[activeId];
+  if (m) {
+    var ev = events.find(function(e) { return e.id === activeId; });
+    if (ev) m.setStyle({ radius: currentMode === 'book' ? 7 : 8, color: '#f5eed8', weight: currentMode === 'book' ? 1.5 : 2 });
+    m.closePopup();
+  }
+  activeId = null;
+}
+
+// ── SELECT EVENT ─────────────────────────────────────────────
+function selectEvent(id) {
+  // Deactivate previous
+  if (activeId !== null) {
+    var pi = document.getElementById('item-' + activeId);
+    if (pi) pi.classList.remove('active');
+    var pm = leafletMarkers[activeId];
+    if (pm) {
+      var prevEv = events.find(function(e) { return e.id === activeId; });
+      if (prevEv) pm.setStyle({ radius: currentMode === 'book' ? 7 : 8, color: '#f5eed8', weight: currentMode === 'book' ? 1.5 : 2 });
+    }
+  }
+  activeId = id;
+  // Activate sidebar item
+  var item = document.getElementById('item-' + id);
+  if (item) {
+    item.classList.add('active');
+    if (currentMode === 'book') {
+      var grp = item.closest('.ch-group');
+      if (grp) { var h = grp.querySelector('.ch-group-hdr'); if (h && !h.classList.contains('open')) h.classList.add('open'); }
+    }
+    item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    openDrawerIfMobile();
+  }
+  // Activate marker
+  var m = leafletMarkers[id];
+  if (m) { m.setStyle({ radius: 11, color: '#e8c76a', weight: 3 }); m.openPopup(); }
+  // flyTo
+  var ev = events.find(function(e) { return e.id === id; });
+  if (ev) {
+    map.flyTo([ev.lat, ev.lng], 13, { duration: 1.1 });
+    refreshPlaceTab(ev);
+  }
+}
+
+// ── PLACE ACROSS TIME ────────────────────────────────────────
+var PROXIMITY_KM = 1.0;
+
+// Refreshes the place tab on the active sidebar item — called on select
+// so it always reflects current era state
+function refreshPlaceTab(ev) {
+  var item = document.getElementById('item-' + ev.id);
+  if (!item) return;
+  var det = item.querySelector('.ev-detail');
+  if (!det) return;
+
+  var nearby    = findNearby(ev.lat, ev.lng, ev.id);
+  var nearbyMod = findNearbyModern(ev.lat, ev.lng);
+  var total     = nearby.length + nearbyMod.length;
+
+  // Remove existing toggle + place panel, leave event panel alone
+  var existingToggle = det.querySelector('.pat-toggle');
+  if (existingToggle) existingToggle.remove();
+  var existingPlace = document.getElementById('panel-place-' + ev.id);
+  if (existingPlace) existingPlace.remove();
+
+  if (total <= 1 && nearbyMod.length === 0) return; // nothing to show
+
+  var placeLabel = 'This Place (' + (nearby.length + nearbyMod.length) + ')';
+
+  // Re-insert toggle before the event panel
+  var evPanel = document.getElementById('panel-ev-' + ev.id);
+  var toggleDiv = document.createElement('div');
+  toggleDiv.className = 'pat-toggle';
+  toggleDiv.innerHTML =
+    '<button class="pat-tab active" id="tab-ev-' + ev.id + '" onclick="switchTab(' + ev.id + ',\'ev\')">This Event</button>' +
+    '<button class="pat-tab" id="tab-place-' + ev.id + '" onclick="switchTab(' + ev.id + ',\'place\')">' + placeLabel + '</button>';
+  det.insertBefore(toggleDiv, evPanel);
+
+  // Build place rows — Tanach
+  var tanachRows = nearby.map(function(ne) {
+    var isCurrent = (ne.eventId === ev.id || (ne.chapterNum === (ev.chapterNum || currentChapter) && ne.verse === ev.verse));
+    return '<div class="pat-event' + (isCurrent ? ' current' : '') + '" onclick="' +
+      (isCurrent ? '' : 'jumpToPlace(' + ne.chapterNum + ',' + ne.eventId + ')') + '">' +
+      '<div class="pat-ch"><span class="pat-ch-dot" style="background:' + (CHAPTER_COLORS[ne.chapterNum] || '#8a7a5a') + '"></span>Ch ' + ne.chapterNum + ' · ' + ne.verse + '</div>' +
+      '<div class="pat-place">' + ne.place + '</div>' +
+      '<div class="pat-d">' + ne.desc.substring(0,90) + '…</div></div>';
+  }).join('');
+
+  // Build place rows — Modern
+  var modernRows = nearbyMod.map(function(me) {
+    return '<div class="pat-event" onclick="selectModernEvent(\'' + me.id + '\')" style="border-left:2px solid ' + getModernColor(me.period) + ';padding-left:8px;">' +
+      '<div class="pat-ch" style="color:#4a7a9a;"><span class="pat-ch-dot" style="background:' + getModernColor(me.period) + '"></span>' + me.year + ' · ' + me.period + '</div>' +
+      '<div class="pat-place">' + me.place + '</div>' +
+      '<div class="pat-d">' + me.desc.substring(0,90) + '…</div></div>';
+  }).join('');
+
+  var placePanel = document.createElement('div');
+  placePanel.className = 'pat-panel';
+  placePanel.id = 'panel-place-' + ev.id;
+  placePanel.innerHTML = (tanachRows + modernRows) || '<div class="pat-none">No other events found nearby.</div>';
+  det.appendChild(placePanel);
+}
+
+function findNearby(lat, lng, excludeId) {
+  var book = BOOKS[currentBook];
+  var nearby = []; var seen = {};
+  book.chapters.forEach(function(ch) {
+    var key = ch.key || (currentBook + '_' + ch.num);
+    var data = CHAPTERS[key];
+    if (!data) return;
+    data.forEach(function(ev, i) {
+      if (haversineKm(lat, lng, ev.lat, ev.lng) <= PROXIMITY_KM) {
+        var uid = ch.num + '_' + i;
+        if (!seen[uid]) {
+          seen[uid] = true;
+          var chColor = (currentBook === 'shmuel2' ? CHAPTER_COLORS_S2 : CHAPTER_COLORS)[ch.num] || '#8a7a5a';
+          nearby.push({ chapterNum: ch.num, verse: ev.verse, place: ev.place, heb: ev.heb || '',
+            desc: ev.desc, source: ev.source || '', persons: ev.persons || [],
+            eventId: ch.num * 100 + i + 1, color: chColor });
+        }
+      }
+    });
+  });
+  nearby.sort(function(a, b) { return a.chapterNum !== b.chapterNum ? a.chapterNum - b.chapterNum : a.verse.localeCompare(b.verse); });
+  return nearby;
+}
+
+// ── MODE ─────────────────────────────────────────────────────
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('btn-chapter').className = 'pill-btn' + (mode === 'chapter' ? ' active' : '');
+  document.getElementById('btn-book').className    = 'pill-btn' + (mode === 'book'    ? ' active' : '');
+  var chCtrl = document.getElementById('ch-controls');
+  chCtrl.style.opacity = mode === 'book' ? '0.3' : '1';
+  chCtrl.style.pointerEvents = mode === 'book' ? 'none' : '';
+  if (mode === 'book') loadBookView();
+  else loadChapter(currentBook, currentChapter);
+}
+
+function loadBookView() {
+  var book = BOOKS[currentBook];
+  var all = [];
+  book.chapters.forEach(function(ch) {
+    var key = ch.key || (currentBook + '_' + ch.num);
+    var data = CHAPTERS[key];
+    if (!data) return;
+    data.forEach(function(ev, i) {
+      var c = JSON.parse(JSON.stringify(ev));
+      c.id = ch.num * 100 + i + 1;
+      c.chapterNum = ch.num; c.chapterLabel = ch.label;
+      c.color = (currentBook === 'shmuel2' ? CHAPTER_COLORS_S2 : CHAPTER_COLORS)[ch.num] || '#8a7a5a';
+      all.push(c);
+    });
+  });
+  events = all; activeId = null;
+  // Reset filters
+  bookFilterPerson = ''; bookFilterTheme = ''; bookFilterMaxCh = 31;
+  document.getElementById('bc-person').value = '';
+  document.getElementById('bc-theme').value  = '';
+  var rng = document.getElementById('bc-range');
+  rng.value = 31; rng.style.setProperty('--pct','100%');
+  document.getElementById('range-disp').textContent = '31';
+  document.getElementById('range-end').textContent  = '31';
+  renderSidebarBook();
+  renderMapBook();
+  updateHeader();
+  updateLegend();
+  var lls = events.map(function(e) { return [e.lat, e.lng]; });
+  if (lls.length) map.fitBounds(L.latLngBounds(lls), { padding: [40,40], maxZoom: 10 });
+}
+
+// ── HEADER + LEGEND ──────────────────────────────────────────
+function updateHeader() {
+  if (currentMode === 'book') {
+    var book = BOOKS[currentBook];
+    document.getElementById('h-heb').textContent = book.hebrewLabel + ' — כל הספר';
+    document.getElementById('h-sub').textContent = book.label + ' — Full Book';
+    document.getElementById('ev-badge').textContent = events.length + ' events';
+  } else {
+    var bk = BOOKS[currentBook];
+    var chObj = bk.chapters.find(function(c) { return c.num === currentChapter; });
+    document.getElementById('h-heb').textContent = bk.hebrewLabel + ' · פרק ' + hebrewNumeral(currentChapter);
+    document.getElementById('h-sub').textContent = bk.label + ' · ' + (chObj ? chObj.label.split('—')[1].trim() : 'Chapter ' + currentChapter);
+    document.getElementById('ev-badge').textContent = events.length + ' events';
+  }
+  // Mobile drawer label
+  var dl = document.getElementById('drawer-label');
+  if (dl && !document.getElementById('sidebar').classList.contains('open')) {
+    dl.textContent = events.length + ' Events';
+  }
+}
+
+function updateLegend() {
+  var el = document.getElementById('legend');
+  if (!el) return;
+  if (currentMode === 'chapter') {
+    var seen = {}; var rows = '';
+    events.forEach(function(ev) {
+      if (!seen[ev.color]) {
+        seen[ev.color] = (ev.persons || []).join(' / ') || ev.place;
+        rows += '<div><span class="ldot" style="background:' + ev.color + '"></span>' + seen[ev.color] + '</div>';
+      }
+    });
+    el.innerHTML = '<div class="legend-title">Color Key</div>' + rows;
+  } else {
+    if (currentBook === 'shmuel2') {
+      el.innerHTML = '<div class="legend-title">Narrative Arc</div>' +
+        '<div><span class="ldot" style="background:#2a4a8a"></span>Ch 1–2 · Mourning &amp; Chevron</div>' +
+        '<div><span class="ldot" style="background:#c8962a"></span>Yerushalayim &amp; Covenant</div>' +
+        '<div><span class="ldot" style="background:#4a7a2a"></span>Empire &amp; Victory</div>' +
+        '<div><span class="ldot" style="background:#8b1a1a"></span>Sin &amp; Judgment</div>' +
+        '<div><span class="ldot" style="background:#6a4a8a"></span>Avshalom\'s Revolt</div>' +
+        '<div><span class="ldot" style="background:#5a7a9a"></span>Ch 24 · Epilogue</div>';
+    } else {
+      el.innerHTML = '<div class="legend-title">Narrative Arc</div>' +
+        '<div><span class="ldot" style="background:#5a7a9a"></span>Ch 1–3 · Shmuel</div>' +
+        '<div><span class="ldot" style="background:#8b3a3a"></span>Crisis &amp; War</div>' +
+        '<div><span class="ldot" style="background:#c8962a"></span>Key Moments</div>' +
+        '<div><span class="ldot" style="background:#2a6a4a"></span>Dovid Rises</div>' +
+        '<div><span class="ldot" style="background:#6a4a8a"></span>Wilderness</div>' +
+        '<div><span class="ldot" style="background:#8b1a1a"></span>Ch 31 · Gilboa</div>';
+    }
+  }
+  if (showModern) {
+    el.innerHTML += '<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(106,154,186,0.2);"><div class="legend-title" style="color:#3a6a8a;">Modern 1882–1967</div>' +
+      '<div><span class="ldot" style="background:#5a8a6a"></span>First Aliyah</div>' +
+      '<div><span class="ldot" style="background:#3a7a8a"></span>Second Aliyah</div>' +
+      '<div><span class="ldot" style="background:#5a6a8a"></span>British Mandate</div>' +
+      '<div><span class="ldot" style="background:#8a4a3a"></span>War of Independence</div>' +
+      '<div><span class="ldot" style="background:#2a5a8a"></span>Six Day War</div></div>';
+  }
+}
+function toggleDrawer() {
+  var sb = document.getElementById('sidebar');
+  var btn = document.getElementById('drawer-toggle');
+  var isOpen = sb.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  document.getElementById('drawer-label').textContent = isOpen ? 'Map' : 'Events';
+}
+
+function openDrawerIfMobile() {
+  if (window.innerWidth <= 680) {
+    var sb = document.getElementById('sidebar');
+    var btn = document.getElementById('drawer-toggle');
+    sb.classList.add('open');
+    btn.classList.add('open');
+    document.getElementById('drawer-label').textContent = 'Map';
+  }
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+buildChapterDropdown('shmuel1');
+document.getElementById('ch-sel').value = 17;
+loadChapter('shmuel1', 17);
+</script>
+</body>
+</html>
